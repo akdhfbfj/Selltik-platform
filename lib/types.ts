@@ -62,6 +62,7 @@ export interface Recommendation {
   brand: string;
   reason: string;
   referenceUrl: string;
+  desiredPrice: string;
   sellerName: string;
   status: RecommendationStatus;
   images: string[];
@@ -74,6 +75,7 @@ export interface RecommendationInput {
   brand?: string;
   reason?: string;
   referenceUrl?: string;
+  desiredPrice?: string;
   sellerName: string;
 }
 

@@ -7,6 +7,7 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 const emptyForm: RecommendationInput = {
   productName: "",
   brand: "",
+  desiredPrice: "",
   referenceUrl: "",
   sellerName: "",
 };
@@ -114,6 +115,18 @@ export default function RecommendForm() {
             value={form.sellerName}
             onChange={(e) => update("sellerName", e.target.value)}
             placeholder="셀틱"
+          />
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            희망 판매가격
+          </label>
+          <input
+            className={inputClass}
+            value={form.desiredPrice ?? ""}
+            onChange={(e) => update("desiredPrice", e.target.value)}
+            placeholder="예: 29,900원"
           />
         </div>
 

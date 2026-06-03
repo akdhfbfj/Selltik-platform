@@ -18,6 +18,7 @@ create table if not exists recommendations (
   brand text not null default '',
   reason text not null default '',
   reference_url text not null default '',
+  desired_price text not null default '',
   seller_name text not null,
   shop_id text references shops(id) on delete set null,
   status text not null default 'new',

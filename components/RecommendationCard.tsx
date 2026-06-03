@@ -52,6 +52,12 @@ export default function RecommendationCard({
           )}
         </div>
 
+        {item.desiredPrice && (
+          <p className="mt-2 text-sm text-slate-600">
+            희망 판매가격: <span className="font-medium">{item.desiredPrice}</span>
+          </p>
+        )}
+
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
           <span className="flex items-center gap-1">
             <Store className="h-3 w-3" />

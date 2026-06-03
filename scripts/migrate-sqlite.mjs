@@ -90,6 +90,7 @@ async function main() {
       brand: r.brand ?? "",
       reason: r.reason ?? "",
       reference_url: r.reference_url ?? "",
+      desired_price: r.desired_price ?? "",
       seller_name: r.seller_name,
       status: r.status ?? "new",
       images,
