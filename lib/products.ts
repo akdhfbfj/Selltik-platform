@@ -175,19 +175,24 @@ export async function importSupplyProducts(
   const supabase = createServerClient();
   const now = new Date().toISOString();
 
-  const existing = await fetchAllRows<{ id: string; official_name: string }>(
-    (from, to) =>
-      supabase
-        .from("master_products")
-        .select("id, official_name")
-        .range(from, to)
-        .then((r) => r)
+  const existing = await fetchAllRows<{
+    id: string;
+    official_name: string;
+    created_at: string;
+  }>((from, to) =>
+    supabase
+      .from("master_products")
+      .select("id, official_name, created_at")
+      .range(from, to)
+      .then((r) => r)
   );
 
-  const nameToId = new Map(existing.map((r) => [r.official_name, r.id]));
+  const nameToExisting = new Map(
+    existing.map((r) => [r.official_name, r])
+  );
 
   const rows = uniqueItems.map((item) => {
-    const existingId = nameToId.get(item.officialName);
+    const found = nameToExisting.get(item.officialName);
     const base = {
       official_name: item.officialName,
       description: item.description,
@@ -199,11 +204,9 @@ export async function importSupplyProducts(
       profit_rate: item.profitRate,
       sort_order: item.sortOrder,
       updated_at: now,
+      created_at: found?.created_at ?? now,
     };
-    if (existingId) {
-      return { ...base, id: existingId };
-    }
-    return { ...base, id: uuidv4(), created_at: now };
+    return { ...base, id: found?.id ?? uuidv4() };
   });
 
   const CHUNK = 50;

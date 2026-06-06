@@ -64,12 +64,18 @@ function parseCsvLine(line: string): string[] {
   return fields;
 }
 
+function isMetaRow(name: string): boolean {
+  const n = name.trim();
+  if (!n) return true;
+  if (n.includes("상 품 명") || n.includes("상품명")) return true;
+  if (n.includes("본 가격표의 모든 단가")) return true;
+  if (n === "설명" || n === "셀러") return true;
+  return false;
+}
+
 function isProductRow(name: string, cols: string[]): boolean {
   const n = name.trim();
-  if (!n) return false;
-  if (n.includes("상 품 명") || n.includes("상품명")) return false;
-  // 이 CSV는 상품명이 [브랜드] 로 시작함
-  if (!n.startsWith("[")) return false;
+  if (isMetaRow(n)) return false;
   const hasPrice =
     parsePrice(cols[2] ?? "") > 0 || parsePrice(cols[5] ?? "") > 0;
   return hasPrice;
@@ -82,7 +88,7 @@ export function parseSupplyCsv(text: string): ParsedSupplyProduct[] {
   for (const line of parseCsvRecords(text)) {
     if (!line.trim()) continue;
     const cols = parseCsvLine(line);
-    const officialName = cols[0]?.trim() ?? "";
+    const officialName = (cols[0]?.trim() ?? "").replace(/\r/g, "");
     if (!isProductRow(officialName, cols)) continue;
 
     order += 1;
