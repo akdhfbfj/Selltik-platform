@@ -184,3 +184,13 @@ export interface MasterProduct {
 export interface SellerProductView extends MasterProduct {
   smsName: string;
 }
+
+export interface MasterProductInput {
+  officialName: string;
+  description?: string;
+  purchasePrice: number;
+  baseShipping: number;
+  consumerPrice: number;
+  profitAmount?: number;
+  profitRate?: string;
+}
