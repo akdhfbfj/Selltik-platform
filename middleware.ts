@@ -1,8 +1,20 @@
+import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getSessionToken, SESSION_COOKIE } from "@/lib/auth";
 
-const PUBLIC_PAGES = ["/recommend", "/login"];
+const ADMIN_PAGES = ["/", "/inbox", "/admin"];
+const PUBLIC_PAGES = ["/recommend", "/login", "/seller/login"];
+
+function isAdminPage(pathname: string): boolean {
+  return ADMIN_PAGES.some(
+    (p) => pathname === p || (p !== "/" && pathname.startsWith(`${p}/`))
+  );
+}
+
+function isSellerPage(pathname: string): boolean {
+  return pathname === "/seller" || pathname.startsWith("/seller/");
+}
 
 function isPublicApi(pathname: string, method: string): boolean {
   if (pathname === "/api/auth/login" && method === "POST") return true;
@@ -13,32 +25,97 @@ function isPublicApi(pathname: string, method: string): boolean {
   return false;
 }
 
-export function middleware(request: NextRequest) {
+function isSellerApi(pathname: string): boolean {
+  return pathname.startsWith("/api/seller/");
+}
+
+function isAdminApi(pathname: string): boolean {
+  return pathname.startsWith("/api/admin/");
+}
+
+function checkAdminPin(request: NextRequest): boolean {
+  const session = request.cookies.get(SESSION_COOKIE)?.value;
+  return session === getSessionToken();
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const method = request.method;
+
+  let response = NextResponse.next({ request });
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  let sellerUser: { id: string } | null = null;
+
+  if (supabaseUrl && supabaseAnonKey) {
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
+        },
+      },
+    });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    sellerUser = user;
+  }
 
   if (PUBLIC_PAGES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
-    return NextResponse.next();
+    return response;
   }
 
-  if (isPublicApi(pathname, request.method)) {
-    return NextResponse.next();
+  if (isPublicApi(pathname, method)) {
+    return response;
   }
 
-  const session = request.cookies.get(SESSION_COOKIE)?.value;
-  const authenticated = session === getSessionToken();
-
-  if (!authenticated) {
-    if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  if (isSellerPage(pathname) || isSellerApi(pathname)) {
+    if (pathname === "/seller/login") {
+      return response;
     }
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("from", pathname);
-    return NextResponse.redirect(loginUrl);
+    if (!sellerUser) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "셀러 로그인이 필요합니다." }, { status: 401 });
+      }
+      const loginUrl = new URL("/seller/login", request.url);
+      loginUrl.searchParams.set("from", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+    return response;
   }
 
-  return NextResponse.next();
+  if (isAdminPage(pathname) || isAdminApi(pathname) || pathname.startsWith("/api/")) {
+    if (!checkAdminPin(request)) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+      }
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("from", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+    return response;
+  }
+
+  return response;
 }
 
 export const config = {
-  matcher: ["/", "/inbox", "/login", "/api/:path*"],
+  matcher: [
+    "/",
+    "/inbox",
+    "/login",
+    "/admin/:path*",
+    "/seller/:path*",
+    "/api/:path*",
+  ],
 };

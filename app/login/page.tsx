@@ -76,11 +76,15 @@ function LoginForm() {
       </form>
 
       <p className="mt-6 text-center text-xs text-slate-400">
-        셀러분은{" "}
+        셀러 발주·관리는{" "}
+        <a href="/seller/login" className="text-brand-600 underline">
+          셀러 로그인
+        </a>
+        {" · "}
+        신상품 추천은{" "}
         <a href="/recommend" className="text-brand-600 underline">
           추천 페이지
         </a>
-        를 이용해주세요
       </p>
     </div>
   );

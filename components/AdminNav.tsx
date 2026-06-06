@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, Inbox, LogOut, Package2 } from "lucide-react";
+import { Building2, Inbox, LogOut, Package2, Users } from "lucide-react";
 
 export default function AdminNav() {
   const pathname = usePathname();
@@ -10,6 +10,7 @@ export default function AdminNav() {
   const links = [
     { href: "/inbox", label: "셀러 추천함", icon: Inbox },
     { href: "/", label: "업체 컨택", icon: Building2 },
+    { href: "/admin/shops", label: "셀러 계정", icon: Users },
   ];
 
   const handleLogout = async () => {

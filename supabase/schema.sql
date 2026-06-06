@@ -7,9 +7,13 @@ create extension if not exists "pgcrypto";
 create table if not exists shops (
   id text primary key,
   name text not null,
+  contact_email text not null default '',
+  auth_user_id uuid unique,
   plan text not null default 'free',
   created_at timestamptz not null default now()
 );
+
+create index if not exists idx_shops_auth_user_id on shops(auth_user_id);
 
 -- ── 셀러 신상품 추천 ──
 create table if not exists recommendations (

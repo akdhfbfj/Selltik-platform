@@ -153,5 +153,14 @@ export interface Shop {
   id: string;
   name: string;
   plan: ShopPlan;
+  contactEmail: string;
+  authUserId: string;
   createdAt: string;
+}
+
+export interface ShopInput {
+  name: string;
+  contactEmail: string;
+  password: string;
+  plan?: ShopPlan;
 }
