@@ -166,3 +166,21 @@ export interface ShopInput {
   password: string;
   plan?: ShopPlan;
 }
+
+export interface MasterProduct {
+  id: string;
+  officialName: string;
+  description: string;
+  purchasePrice: number;
+  baseShipping: number;
+  supplyTotal: number;
+  consumerPrice: number;
+  profitAmount: number;
+  profitRate: string;
+  sortOrder: number;
+  updatedAt: string;
+}
+
+export interface SellerProductView extends MasterProduct {
+  smsName: string;
+}

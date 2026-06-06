@@ -33,11 +33,14 @@ export default async function SellerHomePage() {
           <h3 className="mt-3 font-semibold text-slate-900">신상품 추천</h3>
           <p className="mt-1 text-sm text-slate-500">로그인 연동 · 내역 확인</p>
         </Link>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <Link
+          href="/seller/products"
+          className="rounded-2xl border border-emerald-200 bg-emerald-50/30 p-5 shadow-sm transition hover:border-emerald-300"
+        >
           <Package className="h-8 w-8 text-emerald-600" />
-          <h3 className="mt-3 font-semibold text-slate-900">공급가·상품</h3>
-          <p className="mt-1 text-sm text-slate-500">2단계에서 연동 예정</p>
-        </div>
+          <h3 className="mt-3 font-semibold text-slate-900">상품·공급가</h3>
+          <p className="mt-1 text-sm text-slate-500">판매가 확인 · 문자 상품명 설정</p>
+        </Link>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <MessageSquare className="h-8 w-8 text-emerald-600" />
           <h3 className="mt-3 font-semibold text-slate-900">문자 → 발주</h3>
