@@ -16,6 +16,31 @@ function parsePrice(val: string): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
+/** 따옴표 안 줄바꿈을 한 행으로 묶음 (RFC 4180) */
+function parseCsvRecords(text: string): string[] {
+  const records: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      current += ch;
+      continue;
+    }
+    if ((ch === "\n" || ch === "\r") && !inQuotes) {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      if (current.trim()) records.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) records.push(current);
+  return records;
+}
+
 /** 간단 CSV 행 파싱 (따옴표 필드 지원) */
 function parseCsvLine(line: string): string[] {
   const fields: string[] = [];
@@ -51,11 +76,10 @@ function isProductRow(name: string, cols: string[]): boolean {
 }
 
 export function parseSupplyCsv(text: string): ParsedSupplyProduct[] {
-  const lines = text.split(/\r?\n/);
   const products: ParsedSupplyProduct[] = [];
   let order = 0;
 
-  for (const line of lines) {
+  for (const line of parseCsvRecords(text)) {
     if (!line.trim()) continue;
     const cols = parseCsvLine(line);
     const officialName = cols[0]?.trim() ?? "";

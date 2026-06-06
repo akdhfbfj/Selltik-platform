@@ -50,14 +50,40 @@ export function formatDbError(error: { message?: string; code?: string }): strin
   return msg || "DB 오류가 발생했습니다.";
 }
 
+const PAGE_SIZE = 1000;
+
+async function fetchAllRows<T>(
+  fetchPage: (
+    from: number,
+    to: number
+  ) => PromiseLike<{ data: T[] | null; error: unknown }>
+): Promise<T[]> {
+  const all: T[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await fetchPage(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = data ?? [];
+    all.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+
+  return all;
+}
+
 export async function getAllMasterProducts(): Promise<MasterProduct[]> {
   const supabase = createServerClient();
-  const { data, error } = await supabase
-    .from("master_products")
-    .select("*")
-    .order("sort_order", { ascending: true });
-  if (error) throw error;
-  return (data ?? []).map(rowToProduct);
+  const rows = await fetchAllRows<DbRow>((from, to) =>
+    supabase
+      .from("master_products")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .range(from, to)
+      .then((r) => r)
+  );
+  return rows.map(rowToProduct);
 }
 
 export async function getMasterProductById(id: string): Promise<MasterProduct | null> {
@@ -129,23 +155,38 @@ export async function deleteMasterProduct(id: string): Promise<boolean> {
   return (count ?? 0) > 0;
 }
 
+/** 같은 상품명은 마지막 행 기준 (CSV 중복·배치 upsert 오류 방지) */
+function dedupeSupplyProducts(items: ParsedSupplyProduct[]): ParsedSupplyProduct[] {
+  const map = new Map<string, ParsedSupplyProduct>();
+  for (const item of items) {
+    map.set(item.officialName, item);
+  }
+  return [...map.values()].sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
 /** CSV 일괄 반영 — 배치 upsert (Vercel 타임아웃 방지) */
 export async function importSupplyProducts(
   items: ParsedSupplyProduct[]
-): Promise<{ imported: number; total: number }> {
+): Promise<{ imported: number; parsed: number; duplicates: number }> {
+  const parsed = items.length;
+  const uniqueItems = dedupeSupplyProducts(items);
+  const duplicates = parsed - uniqueItems.length;
+
   const supabase = createServerClient();
   const now = new Date().toISOString();
 
-  const { data: existing, error: fetchError } = await supabase
-    .from("master_products")
-    .select("id, official_name");
-  if (fetchError) throw fetchError;
-
-  const nameToId = new Map(
-    (existing ?? []).map((r) => [r.official_name as string, r.id as string])
+  const existing = await fetchAllRows<{ id: string; official_name: string }>(
+    (from, to) =>
+      supabase
+        .from("master_products")
+        .select("id, official_name")
+        .range(from, to)
+        .then((r) => r)
   );
 
-  const rows = items.map((item) => {
+  const nameToId = new Map(existing.map((r) => [r.official_name, r.id]));
+
+  const rows = uniqueItems.map((item) => {
     const existingId = nameToId.get(item.officialName);
     const base = {
       official_name: item.officialName,
@@ -174,7 +215,7 @@ export async function importSupplyProducts(
     if (error) throw error;
   }
 
-  return { imported: items.length, total: items.length };
+  return { imported: uniqueItems.length, parsed, duplicates };
 }
 
 export async function getSellerProductViews(

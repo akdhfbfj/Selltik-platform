@@ -25,10 +25,14 @@ export async function POST(request: Request) {
     }
 
     const result = await importSupplyProducts(items);
+    const dupNote =
+      result.duplicates > 0
+        ? ` (CSV 중복 상품명 ${result.duplicates}건은 마지막 행으로 통합)`
+        : "";
     return NextResponse.json({
       success: true,
       ...result,
-      message: `${result.imported}개 상품이 반영되었습니다.`,
+      message: `CSV ${result.parsed}행 중 ${result.imported}개 상품이 반영되었습니다.${dupNote}`,
     });
   } catch (e) {
     const err = e as { message?: string; code?: string };
