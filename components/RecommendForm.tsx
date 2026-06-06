@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import type { RecommendationInput } from "@/lib/types";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, Store } from "lucide-react";
 
-const emptyForm: RecommendationInput = {
+const emptyForm = {
   productName: "",
   brand: "",
   desiredPrice: "",
@@ -12,13 +12,21 @@ const emptyForm: RecommendationInput = {
   sellerName: "",
 };
 
-export default function RecommendForm() {
-  const [form, setForm] = useState<RecommendationInput>({ ...emptyForm });
+interface Props {
+  variant?: "public" | "seller";
+  shopName?: string;
+}
+
+export default function RecommendForm({ variant = "public", shopName }: Props) {
+  const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
 
-  const update = (field: keyof RecommendationInput, value: string) => {
+  const isSeller = variant === "seller";
+  const apiUrl = isSeller ? "/api/seller/recommendations" : "/api/recommendations";
+
+  const update = (field: keyof typeof emptyForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -28,7 +36,7 @@ export default function RecommendForm() {
       setError("상품명을 입력해주세요.");
       return;
     }
-    if (!form.sellerName.trim()) {
+    if (!isSeller && !form.sellerName.trim()) {
       setError("쇼핑몰 이름을 입력해주세요.");
       return;
     }
@@ -36,11 +44,21 @@ export default function RecommendForm() {
     setSaving(true);
     setError("");
 
+    const body: Partial<RecommendationInput> = {
+      productName: form.productName,
+      brand: form.brand,
+      desiredPrice: form.desiredPrice,
+      referenceUrl: form.referenceUrl,
+    };
+    if (!isSeller) {
+      body.sellerName = form.sellerName;
+    }
+
     try {
-      const res = await fetch("/api/recommendations", {
+      const res = await fetch(apiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -69,6 +87,9 @@ export default function RecommendForm() {
           onClick={() => {
             setDone(false);
             setForm({ ...emptyForm });
+            if (isSeller) {
+              window.dispatchEvent(new Event("seller-recommend-submitted"));
+            }
           }}
           className="mt-6 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
         >
@@ -80,6 +101,15 @@ export default function RecommendForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {isSeller && shopName && (
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50/50 px-4 py-3 text-sm text-emerald-900">
+          <Store className="h-4 w-4 shrink-0" />
+          <span>
+            <span className="font-medium">{shopName}</span> 으로 추천됩니다
+          </span>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -89,12 +119,11 @@ export default function RecommendForm() {
             className={inputClass}
             value={form.productName}
             onChange={(e) => update("productName", e.target.value)}
-            placeholder=""
             autoFocus
           />
         </div>
 
-        <div>
+        <div className={isSeller ? "sm:col-span-2" : ""}>
           <label className="mb-1.5 block text-sm font-medium text-slate-700">
             브랜드
           </label>
@@ -106,17 +135,19 @@ export default function RecommendForm() {
           />
         </div>
 
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-700">
-            쇼핑몰 이름 <span className="text-red-500">*</span>
-          </label>
-          <input
-            className={inputClass}
-            value={form.sellerName}
-            onChange={(e) => update("sellerName", e.target.value)}
-            placeholder="셀틱"
-          />
-        </div>
+        {!isSeller && (
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              쇼핑몰 이름 <span className="text-red-500">*</span>
+            </label>
+            <input
+              className={inputClass}
+              value={form.sellerName}
+              onChange={(e) => update("sellerName", e.target.value)}
+              placeholder="셀틱"
+            />
+          </div>
+        )}
 
         <div className="sm:col-span-2">
           <label className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -124,7 +155,7 @@ export default function RecommendForm() {
           </label>
           <input
             className={inputClass}
-            value={form.desiredPrice ?? ""}
+            value={form.desiredPrice}
             onChange={(e) => update("desiredPrice", e.target.value)}
             placeholder="예: 29,900원"
           />

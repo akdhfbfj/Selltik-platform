@@ -44,6 +44,7 @@ function rowToRecommendation(row: DbRow): Recommendation {
     referenceUrl: row.reference_url as string,
     desiredPrice: (row.desired_price as string) ?? "",
     sellerName: row.seller_name as string,
+    shopId: (row.shop_id as string) ?? "",
     status: row.status as RecommendationStatus,
     images: Array.isArray(images) ? (images as string[]) : [],
     createdAt: row.created_at as string,
@@ -219,6 +220,19 @@ export async function getAllRecommendations(): Promise<Recommendation[]> {
   return (data ?? []).map(rowToRecommendation);
 }
 
+export async function getRecommendationsByShopId(
+  shopId: string
+): Promise<Recommendation[]> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("recommendations")
+    .select("*")
+    .eq("shop_id", shopId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(rowToRecommendation);
+}
+
 export async function getRecommendationById(
   id: string
 ): Promise<Recommendation | null> {
@@ -246,6 +260,7 @@ export async function createRecommendation(
     reference_url: input.referenceUrl ?? "",
     desired_price: input.desiredPrice ?? "",
     seller_name: input.sellerName,
+    shop_id: input.shopId || null,
     status: "new",
     images: [],
     created_at: now,

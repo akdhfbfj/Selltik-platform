@@ -64,6 +64,7 @@ export interface Recommendation {
   referenceUrl: string;
   desiredPrice: string;
   sellerName: string;
+  shopId: string;
   status: RecommendationStatus;
   images: string[];
   createdAt: string;
@@ -77,6 +78,7 @@ export interface RecommendationInput {
   referenceUrl?: string;
   desiredPrice?: string;
   sellerName: string;
+  shopId?: string;
 }
 
 export const RECOMMENDATION_STATUS_LABELS: Record<RecommendationStatus, string> = {

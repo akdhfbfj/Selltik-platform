@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSellerSession } from "@/lib/supabase/server-auth";
 import { getShopByAuthUserId } from "@/lib/shops";
-import { ClipboardList, MessageSquare, Package } from "lucide-react";
+import { ClipboardList, MessageSquare, Package, Sparkles } from "lucide-react";
 import Link from "next/link";
 
 export default async function SellerHomePage() {
@@ -24,7 +24,15 @@ export default async function SellerHomePage() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Link
+          href="/seller/recommend"
+          className="rounded-2xl border border-emerald-200 bg-emerald-50/30 p-5 shadow-sm transition hover:border-emerald-300"
+        >
+          <Sparkles className="h-8 w-8 text-emerald-600" />
+          <h3 className="mt-3 font-semibold text-slate-900">신상품 추천</h3>
+          <p className="mt-1 text-sm text-slate-500">로그인 연동 · 내역 확인</p>
+        </Link>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <Package className="h-8 w-8 text-emerald-600" />
           <h3 className="mt-3 font-semibold text-slate-900">공급가·상품</h3>
@@ -42,12 +50,12 @@ export default async function SellerHomePage() {
         </div>
       </div>
 
-      <div className="mt-8 rounded-xl border border-emerald-100 bg-emerald-50/50 p-4 text-sm text-emerald-900">
-        신상품 추천은 로그인 없이{" "}
-        <Link href="/recommend" className="font-medium underline">
+      <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+        계정 없이 추천하려면{" "}
+        <Link href="/recommend" className="font-medium text-emerald-700 underline">
           /recommend
         </Link>
-        에서 계속 이용할 수 있습니다.
+        (쇼핑몰 이름 직접 입력)도 이용할 수 있습니다.
       </div>
     </div>
   );

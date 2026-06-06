@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
-import { LayoutDashboard, LogOut, Package2 } from "lucide-react";
+import { LayoutDashboard, LogOut, Package2, Sparkles } from "lucide-react";
 
 interface Props {
   shopName: string;
@@ -43,6 +43,17 @@ export default function SellerNav({ shopName }: Props) {
           >
             <LayoutDashboard className="h-4 w-4" />
             홈
+          </Link>
+          <Link
+            href="/seller/recommend"
+            className={`hidden items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium sm:flex ${
+              pathname === "/seller/recommend"
+                ? "bg-emerald-50 text-emerald-700"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <Sparkles className="h-4 w-4" />
+            신상품 추천
           </Link>
           <button
             onClick={handleLogout}
