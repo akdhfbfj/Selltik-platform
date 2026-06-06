@@ -100,7 +100,7 @@ export default function SellerProductsPage() {
     "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100";
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+    <div className="mx-auto flex h-[calc(100dvh-5.5rem)] max-w-5xl flex-col overflow-hidden px-4 py-6 sm:px-6">
       {showReviewModal && pendingReviewCount > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
@@ -132,7 +132,7 @@ export default function SellerProductsPage() {
         </div>
       )}
 
-      <div className="mb-8">
+      <div className="shrink-0 pb-4">
         <h2 className="text-2xl font-bold text-slate-900">상품·공급가</h2>
         <p className="mt-1 text-sm text-slate-500">
           판매가는 고객 안내용입니다. 문자용 상품명은 본인만 설정합니다.
@@ -145,52 +145,54 @@ export default function SellerProductsPage() {
         )}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[200px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            className={`${inputClass} pl-9`}
-            placeholder="상품명 검색"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
+      <div className="shrink-0 border-b border-slate-200 bg-slate-50 pb-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[200px] flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              className={`${inputClass} bg-white pl-9`}
+              placeholder="상품명 검색"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving || loading}
+            className="flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+          >
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4" />
+            )}
+            저장
+          </button>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving || loading}
-          className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-        >
-          {saving ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Check className="h-4 w-4" />
-          )}
-          저장
-        </button>
+        {error && (
+          <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+            {error}
+          </p>
+        )}
+        {success && (
+          <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+            {success}
+          </p>
+        )}
       </div>
 
-      {error && (
-        <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-          {error}
-        </p>
-      )}
-      {success && (
-        <p className="mb-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-          {success}
-        </p>
-      )}
-
-      {loading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-        </div>
-      ) : products.length === 0 ? (
-        <p className="py-16 text-center text-sm text-slate-400">
-          아직 등록된 상품이 없습니다. 셀틱에 문의하세요.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((p) => (
+      <div className="min-h-0 flex-1 overflow-y-auto pt-4">
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+          </div>
+        ) : products.length === 0 ? (
+          <p className="py-16 text-center text-sm text-slate-400">
+            아직 등록된 상품이 없습니다. 셀틱에 문의하세요.
+          </p>
+        ) : (
+          <div className="space-y-3 pb-4">
+            {filtered.map((p) => (
             <div
               key={p.id}
               className={`rounded-xl border bg-white p-4 shadow-sm ${
@@ -244,9 +246,10 @@ export default function SellerProductsPage() {
                 </button>
               )}
             </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
