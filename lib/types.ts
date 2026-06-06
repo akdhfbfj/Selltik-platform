@@ -183,6 +183,8 @@ export interface MasterProduct {
 
 export interface SellerProductView extends MasterProduct {
   smsName: string;
+  /** 공급가·판매가 등 마스터 정보 변경 시 셀러 확인 필요 */
+  needsReview: boolean;
 }
 
 export interface MasterProductInput {

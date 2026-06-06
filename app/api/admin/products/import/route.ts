@@ -29,10 +29,14 @@ export async function POST(request: Request) {
       result.duplicates > 0
         ? ` (CSV 중복 상품명 ${result.duplicates}건은 마지막 행으로 통합)`
         : "";
+    const changeNote =
+      result.changed > 0
+        ? ` 변경·신규 ${result.changed}건 — 셀러에게 확인 요청이 전달됩니다. 문자용 상품명은 유지됩니다.`
+        : " 변경된 상품 없음.";
     return NextResponse.json({
       success: true,
       ...result,
-      message: `CSV ${result.parsed}행 중 ${result.imported}개 상품이 반영되었습니다.${dupNote}`,
+      message: `CSV ${result.parsed}행 중 ${result.imported}개 상품이 반영되었습니다.${dupNote}${changeNote}`,
     });
   } catch (e) {
     const err = e as { message?: string; code?: string };

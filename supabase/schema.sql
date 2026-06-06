@@ -44,6 +44,20 @@ create table if not exists seller_product_aliases (
 create index if not exists idx_master_products_sort on master_products(sort_order);
 create index if not exists idx_aliases_shop_id on seller_product_aliases(shop_id);
 
+create table if not exists seller_product_reviews (
+  id text primary key,
+  shop_id text not null references shops(id) on delete cascade,
+  product_id text not null references master_products(id) on delete cascade,
+  needs_review boolean not null default true,
+  flagged_at timestamptz not null default now(),
+  acknowledged_at timestamptz,
+  unique (shop_id, product_id)
+);
+
+create index if not exists idx_reviews_shop_pending
+  on seller_product_reviews(shop_id)
+  where needs_review = true;
+
 -- ── 셀러 신상품 추천 ──
 create table if not exists recommendations (
   id text primary key,

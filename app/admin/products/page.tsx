@@ -162,8 +162,9 @@ export default function AdminProductsPage() {
         <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-3 font-semibold text-slate-900">CSV 일괄 업로드</h3>
           <p className="mb-4 text-sm text-slate-500">
-            처음 한 번 「셀틱 공급가」 CSV를 올리면 약 230개 상품이 등록됩니다. 같은
-            상품명은 마지막 행 기준으로 갱신됩니다.
+            CSV는 기존 상품 가격·정보 <strong>갱신</strong>용입니다. 신규 상품은
+            아래 「상품 추가」로 등록하세요. 변경 시 셀러에게 확인 요청이
+            가며, 셀러의 문자용 상품명은 바뀌지 않습니다.
           </p>
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700">
             {uploading ? (

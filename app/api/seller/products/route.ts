@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { getSellerProductViews, upsertSellerAliases } from "@/lib/products";
+import {
+  countPendingProductReviews,
+  getSellerProductViews,
+  upsertSellerAliases,
+} from "@/lib/products";
 import { requireSellerShop } from "@/lib/seller";
 
 export async function GET() {
@@ -9,8 +13,11 @@ export async function GET() {
   }
 
   try {
-    const products = await getSellerProductViews(shop.id);
-    return NextResponse.json({ products, total: products.length });
+    const [products, pendingReviewCount] = await Promise.all([
+      getSellerProductViews(shop.id),
+      countPendingProductReviews(shop.id),
+    ]);
+    return NextResponse.json({ products, total: products.length, pendingReviewCount });
   } catch {
     return NextResponse.json(
       { error: "상품 목록을 불러오지 못했습니다." },

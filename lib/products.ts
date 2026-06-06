@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type { MasterProduct, MasterProductInput, SellerProductView } from "./types";
 import type { ParsedSupplyProduct } from "./parse-supply-csv";
+import { getAllShops } from "./shops";
 import { createServerClient } from "./supabase/server";
 
 type DbRow = Record<string, unknown>;
@@ -43,6 +44,9 @@ export function formatDbError(error: { message?: string; code?: string }): strin
   const msg = error.message ?? "";
   if (msg.includes("master_products") && msg.includes("does not exist")) {
     return "DB 테이블이 없습니다. Supabase SQL Editor에서 003_master_products.sql을 실행하세요.";
+  }
+  if (msg.includes("seller_product_reviews") && msg.includes("does not exist")) {
+    return "DB 테이블이 없습니다. Supabase SQL Editor에서 004_seller_product_reviews.sql을 실행하세요.";
   }
   if (error.code === "23505") {
     return "이미 같은 상품명이 있습니다.";
@@ -110,6 +114,90 @@ export async function getMasterProductByOfficialName(
   return data ? rowToProduct(data) : null;
 }
 
+function masterInputDiffers(
+  existing: MasterProduct,
+  input: MasterProductInput
+): boolean {
+  const supplyTotal = input.purchasePrice + input.baseShipping;
+  const profitAmount =
+    input.profitAmount ?? Math.max(0, input.consumerPrice - supplyTotal);
+  return (
+    existing.officialName !== input.officialName.trim() ||
+    existing.description !== (input.description?.trim() ?? "") ||
+    existing.purchasePrice !== input.purchasePrice ||
+    existing.baseShipping !== input.baseShipping ||
+    existing.supplyTotal !== supplyTotal ||
+    existing.consumerPrice !== input.consumerPrice ||
+    existing.profitAmount !== profitAmount ||
+    existing.profitRate !== (input.profitRate?.trim() ?? "")
+  );
+}
+
+function parsedItemDiffers(
+  existing: MasterProduct,
+  item: ParsedSupplyProduct
+): boolean {
+  return (
+    existing.description !== item.description ||
+    existing.purchasePrice !== item.purchasePrice ||
+    existing.baseShipping !== item.baseShipping ||
+    existing.supplyTotal !== item.supplyTotal ||
+    existing.consumerPrice !== item.consumerPrice ||
+    existing.profitAmount !== item.profitAmount ||
+    existing.profitRate !== item.profitRate
+  );
+}
+
+/** 변경·신규 상품 — 모든 셀러에게 확인 요청 (문자용 상품명은 그대로) */
+export async function flagProductsForSellerReview(
+  productIds: string[]
+): Promise<void> {
+  const uniqueIds = [...new Set(productIds)];
+  if (uniqueIds.length === 0) return;
+
+  const shops = await getAllShops();
+  if (shops.length === 0) return;
+
+  const supabase = createServerClient();
+  const now = new Date().toISOString();
+  const rows = shops.flatMap((shop) =>
+    uniqueIds.map((productId) => ({
+      id: uuidv4(),
+      shop_id: shop.id,
+      product_id: productId,
+      needs_review: true,
+      flagged_at: now,
+      acknowledged_at: null,
+    }))
+  );
+
+  const CHUNK = 100;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    const { error } = await supabase
+      .from("seller_product_reviews")
+      .upsert(chunk, { onConflict: "shop_id,product_id" });
+    if (error) throw error;
+  }
+}
+
+export async function acknowledgeProductReview(
+  shopId: string,
+  productId: string
+): Promise<boolean> {
+  const supabase = createServerClient();
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("seller_product_reviews")
+    .update({ needs_review: false, acknowledged_at: now })
+    .eq("shop_id", shopId)
+    .eq("product_id", productId)
+    .eq("needs_review", true)
+    .select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
 export async function createMasterProduct(
   input: MasterProductInput
 ): Promise<MasterProduct> {
@@ -125,6 +213,7 @@ export async function createMasterProduct(
     created_at: now,
   });
   if (error) throw error;
+  await flagProductsForSellerReview([id]);
   return (await getMasterProductById(id))!;
 }
 
@@ -137,11 +226,13 @@ export async function updateMasterProduct(
 
   const supabase = createServerClient();
   const now = new Date().toISOString();
+  const changed = masterInputDiffers(existing, input);
   const { error } = await supabase
     .from("master_products")
     .update(toDbRow(input, existing.sortOrder, now))
     .eq("id", id);
   if (error) throw error;
+  if (changed) await flagProductsForSellerReview([id]);
   return getMasterProductById(id);
 }
 
@@ -167,7 +258,12 @@ function dedupeSupplyProducts(items: ParsedSupplyProduct[]): ParsedSupplyProduct
 /** CSV 일괄 반영 — 배치 upsert (Vercel 타임아웃 방지) */
 export async function importSupplyProducts(
   items: ParsedSupplyProduct[]
-): Promise<{ imported: number; parsed: number; duplicates: number }> {
+): Promise<{
+  imported: number;
+  parsed: number;
+  duplicates: number;
+  changed: number;
+}> {
   const parsed = items.length;
   const uniqueItems = dedupeSupplyProducts(items);
   const duplicates = parsed - uniqueItems.length;
@@ -175,7 +271,12 @@ export async function importSupplyProducts(
   const supabase = createServerClient();
   const now = new Date().toISOString();
 
-  const existing = await fetchAllRows<{
+  const existingProducts = await getAllMasterProducts();
+  const nameToProduct = new Map(
+    existingProducts.map((p) => [p.officialName, p])
+  );
+
+  const existingMeta = await fetchAllRows<{
     id: string;
     official_name: string;
     created_at: string;
@@ -186,14 +287,18 @@ export async function importSupplyProducts(
       .range(from, to)
       .then((r) => r)
   );
+  const nameToMeta = new Map(existingMeta.map((r) => [r.official_name, r]));
 
-  const nameToExisting = new Map(
-    existing.map((r) => [r.official_name, r])
-  );
-
-  const rows = uniqueItems.map((item) => {
-    const found = nameToExisting.get(item.officialName);
-    const base = {
+  const finalChangedIds: string[] = [];
+  const upsertRows = uniqueItems.map((item) => {
+    const meta = nameToMeta.get(item.officialName);
+    const existing = nameToProduct.get(item.officialName);
+    const id = meta?.id ?? uuidv4();
+    if (!existing || parsedItemDiffers(existing, item)) {
+      finalChangedIds.push(id);
+    }
+    return {
+      id,
       official_name: item.officialName,
       description: item.description,
       purchase_price: item.purchasePrice,
@@ -204,21 +309,27 @@ export async function importSupplyProducts(
       profit_rate: item.profitRate,
       sort_order: item.sortOrder,
       updated_at: now,
-      created_at: found?.created_at ?? now,
+      created_at: meta?.created_at ?? now,
     };
-    return { ...base, id: found?.id ?? uuidv4() };
   });
 
   const CHUNK = 50;
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK);
+  for (let i = 0; i < upsertRows.length; i += CHUNK) {
+    const chunk = upsertRows.slice(i, i + CHUNK);
     const { error } = await supabase
       .from("master_products")
       .upsert(chunk, { onConflict: "official_name" });
     if (error) throw error;
   }
 
-  return { imported: uniqueItems.length, parsed, duplicates };
+  await flagProductsForSellerReview(finalChangedIds);
+
+  return {
+    imported: uniqueItems.length,
+    parsed,
+    duplicates,
+    changed: finalChangedIds.length,
+  };
 }
 
 export async function getSellerProductViews(
@@ -226,20 +337,41 @@ export async function getSellerProductViews(
 ): Promise<SellerProductView[]> {
   const products = await getAllMasterProducts();
   const supabase = createServerClient();
-  const { data: aliases, error } = await supabase
-    .from("seller_product_aliases")
-    .select("*")
-    .eq("shop_id", shopId);
-  if (error) throw error;
+  const [{ data: aliases, error: aliasError }, { data: reviews, error: reviewError }] =
+    await Promise.all([
+      supabase.from("seller_product_aliases").select("*").eq("shop_id", shopId),
+      supabase
+        .from("seller_product_reviews")
+        .select("product_id")
+        .eq("shop_id", shopId)
+        .eq("needs_review", true),
+    ]);
+  if (aliasError) throw aliasError;
+  if (reviewError) throw reviewError;
 
   const aliasMap = new Map(
     (aliases ?? []).map((a) => [a.product_id as string, a.sms_name as string])
+  );
+  const reviewSet = new Set(
+    (reviews ?? []).map((r) => r.product_id as string)
   );
 
   return products.map((p) => ({
     ...p,
     smsName: aliasMap.get(p.id) ?? "",
+    needsReview: reviewSet.has(p.id),
   }));
+}
+
+export async function countPendingProductReviews(shopId: string): Promise<number> {
+  const supabase = createServerClient();
+  const { count, error } = await supabase
+    .from("seller_product_reviews")
+    .select("id", { count: "exact", head: true })
+    .eq("shop_id", shopId)
+    .eq("needs_review", true);
+  if (error) throw error;
+  return count ?? 0;
 }
 
 export async function upsertSellerAliases(
