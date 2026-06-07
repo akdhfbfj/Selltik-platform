@@ -14,6 +14,7 @@ import {
 } from "@/lib/build-outbound-sms";
 import { extractTextFromImage } from "@/lib/extract-image-text";
 import { formatKrw } from "@/lib/parse-supply-csv";
+import { sumCelticDeposit } from "@/lib/export-order-xlsx";
 import { calcOrderPricing } from "@/lib/order-pricing";
 import { REMOTE_SHIPPING_SURCHARGE } from "@/lib/remote-area";
 import {
@@ -27,6 +28,7 @@ import {
   Check,
   ClipboardPaste,
   Copy,
+  Download,
   ImageIcon,
   Loader2,
   MessageSquare,
@@ -87,6 +89,10 @@ export default function SellerOrdersPage() {
   const [copied, setCopied] = useState(false);
   const [shopName, setShopName] = useState("");
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [exporting, setExporting] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const draftPricing = useMemo(() => {
@@ -361,6 +367,75 @@ export default function SellerOrdersPage() {
     if (!confirm("이 발주 초안을 삭제할까요?")) return;
     const res = await fetch(`/api/seller/orders/${id}`, { method: "DELETE" });
     if (res.ok) loadData();
+  };
+
+  useEffect(() => {
+    setSelectedOrderIds(
+      new Set(orders.filter((o) => o.status === "draft").map((o) => o.id))
+    );
+  }, [orders]);
+
+  const selectedOrders = useMemo(
+    () => orders.filter((o) => selectedOrderIds.has(o.id)),
+    [orders, selectedOrderIds]
+  );
+
+  const exportCelticTotal = useMemo(
+    () => sumCelticDeposit(selectedOrders),
+    [selectedOrders]
+  );
+
+  const toggleOrderSelect = (id: string) => {
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllOrders = () => {
+    if (selectedOrderIds.size === orders.length) {
+      setSelectedOrderIds(new Set());
+    } else {
+      setSelectedOrderIds(new Set(orders.map((o) => o.id)));
+    }
+  };
+
+  const handleExportXlsx = async () => {
+    if (selectedOrderIds.size === 0) return;
+    setExporting(true);
+    setError("");
+    setSuccess("");
+
+    const res = await fetch("/api/seller/orders/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderIds: [...selectedOrderIds] }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error || "발주서 다운로드에 실패했습니다.");
+    } else {
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = disposition.match(/filename\*=UTF-8''(.+)/);
+      const filename = match
+        ? decodeURIComponent(match[1])
+        : `[발주] 발주서(${shopName || "셀러"}).xlsx`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      setSuccess(
+        `${selectedOrderIds.size}건 발주서를 내려받았습니다. 상태가「출력됨」으로 바뀝니다.`
+      );
+      loadData();
+    }
+    setExporting(false);
   };
 
   const inputClass =
@@ -970,10 +1045,44 @@ export default function SellerOrdersPage() {
         </form>
       )}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="mb-4 font-semibold text-slate-900">
-          저장된 발주 ({orders.length}건)
-        </h3>
+      <div
+        id="export"
+        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+      >
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-semibold text-slate-900">
+              ④ 발주서 출력 ({orders.length}건)
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              선택한 발주를 셀틱 양식 xlsx로 내려받습니다.
+            </p>
+          </div>
+          {orders.length > 0 && (
+            <button
+              type="button"
+              onClick={handleExportXlsx}
+              disabled={exporting || selectedOrderIds.size === 0}
+              className="flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {exporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              xlsx 다운로드 ({selectedOrderIds.size}건)
+            </button>
+          )}
+        </div>
+        {selectedOrderIds.size > 0 && (
+          <p className="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            셀틱 입금액 합계:{" "}
+            <span className="font-semibold">{formatKrw(exportCelticTotal)}</span>
+            <span className="ml-2 text-xs text-blue-600">
+              (첫 줄 셀틱 입금액 칸에 기록)
+            </span>
+          </p>
+        )}
         {loading ? (
           <div className="flex justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
@@ -984,13 +1093,35 @@ export default function SellerOrdersPage() {
           </p>
         ) : (
           <div className="space-y-3">
+            <label className="flex cursor-pointer items-center gap-2 px-1 text-xs text-slate-500">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300"
+                checked={
+                  orders.length > 0 && selectedOrderIds.size === orders.length
+                }
+                onChange={toggleAllOrders}
+              />
+              전체 선택
+            </label>
             {orders.map((o) => (
               <div
                 key={o.id}
-                className="rounded-xl border border-slate-200 p-4 text-sm"
+                className={`rounded-xl border p-4 text-sm ${
+                  selectedOrderIds.has(o.id)
+                    ? "border-blue-200 bg-blue-50/30"
+                    : "border-slate-200"
+                }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
+                  <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
+                      checked={selectedOrderIds.has(o.id)}
+                      onChange={() => toggleOrderSelect(o.id)}
+                    />
+                    <div className="min-w-0">
                     <p className="font-medium text-slate-900">{o.productName}</p>
                     <p className="mt-1 text-slate-500">
                       {o.recipientName} · {o.contactPhone} · 수량 {o.quantity}
@@ -998,7 +1129,8 @@ export default function SellerOrdersPage() {
                     <p className="mt-1 text-xs text-slate-400 line-clamp-1">
                       {o.address}
                     </p>
-                  </div>
+                    </div>
+                  </label>
                   <div className="text-right">
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
                       {ORDER_STATUS_LABELS[o.status]}

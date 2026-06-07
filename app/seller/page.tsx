@@ -49,11 +49,14 @@ export default async function SellerHomePage() {
           <h3 className="mt-3 font-semibold text-slate-900">문자 → 발주</h3>
           <p className="mt-1 text-sm text-slate-500">문자 붙여넣기 · 발주 초안</p>
         </Link>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <Link
+          href="/seller/orders#export"
+          className="rounded-2xl border border-emerald-200 bg-emerald-50/30 p-5 shadow-sm transition hover:border-emerald-300"
+        >
           <ClipboardList className="h-8 w-8 text-emerald-600" />
           <h3 className="mt-3 font-semibold text-slate-900">발주서 출력</h3>
-          <p className="mt-1 text-sm text-slate-500">4단계: xlsx 다운로드</p>
-        </div>
+          <p className="mt-1 text-sm text-slate-500">④ xlsx 다운로드</p>
+        </Link>
       </div>
 
       <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">

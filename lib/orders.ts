@@ -125,7 +125,11 @@ export async function buildOrderDraft(
   };
 }
 
-function toDbRow(input: OrderInput, shopId: string, now: string) {
+function toDbRow(
+  input: OrderInput & { celticDepositAmount?: number },
+  shopId: string,
+  now: string
+) {
   return {
     shop_id: shopId,
     product_id: input.productId ?? null,
@@ -142,7 +146,7 @@ function toDbRow(input: OrderInput, shopId: string, now: string) {
     purchase_price: input.purchasePrice,
     shipping_fee: input.shippingFee,
     supply_total: input.supplyTotal,
-    celtic_deposit_amount: input.supplyTotal,
+    celtic_deposit_amount: input.celticDepositAmount ?? input.supplyTotal,
     is_remote_area: input.isRemoteArea,
     raw_sms_text: input.rawSmsText?.trim() ?? "",
     status: input.status ?? "draft",
@@ -219,6 +223,37 @@ export async function updateOrder(
     .maybeSingle();
   if (error) throw error;
   return data ? rowToOrder(data) : null;
+}
+
+export async function getOrdersByIds(
+  shopId: string,
+  ids: string[]
+): Promise<Order[]> {
+  if (!ids.length) return [];
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("shop_id", shopId)
+    .in("id", ids)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(rowToOrder);
+}
+
+export async function markOrdersExported(
+  shopId: string,
+  ids: string[]
+): Promise<void> {
+  if (!ids.length) return;
+  const supabase = createServerClient();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("orders")
+    .update({ status: "exported", updated_at: now })
+    .eq("shop_id", shopId)
+    .in("id", ids);
+  if (error) throw error;
 }
 
 export async function deleteOrder(
