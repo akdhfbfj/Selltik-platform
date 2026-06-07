@@ -2,14 +2,30 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, Inbox, LogOut, Package, Package2, Users } from "lucide-react";
+import {
+  Building2,
+  ClipboardList,
+  Home,
+  Inbox,
+  LogOut,
+  Package,
+  Package2,
+  Users,
+} from "lucide-react";
+
+function navActive(pathname: string, href: string): boolean {
+  if (href === "/admin") return pathname === "/admin";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export default function AdminNav() {
   const pathname = usePathname();
 
   const links = [
-    { href: "/inbox", label: "셀러 추천함", icon: Inbox },
+    { href: "/admin", label: "홈", icon: Home },
     { href: "/", label: "업체 컨택", icon: Building2 },
+    { href: "/inbox", label: "셀러 추천함", icon: Inbox },
+    { href: "/admin/orders", label: "발주 현황", icon: ClipboardList },
     { href: "/admin/shops", label: "셀러 계정", icon: Users },
     { href: "/admin/products", label: "공급가", icon: Package },
   ];
@@ -27,14 +43,16 @@ export default function AdminNav() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-white shadow-lg shadow-brand-600/25">
               <Package2 className="h-5 w-5" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold text-slate-900">신상품 관리</h1>
-              <p className="text-xs text-slate-500">셀틱 전용</p>
-            </div>
+            <Link href="/admin" className="group">
+              <h1 className="text-lg font-bold text-slate-900 group-hover:text-brand-700">
+                셀틱 관리
+              </h1>
+              <p className="text-xs text-slate-500">관리자</p>
+            </Link>
           </div>
           <nav className="hidden items-center gap-1 sm:flex">
             {links.map(({ href, label, icon: Icon }) => {
-              const active = pathname === href;
+              const active = navActive(pathname, href);
               return (
                 <Link
                   key={href}
@@ -60,9 +78,9 @@ export default function AdminNav() {
           <span className="hidden sm:inline">로그아웃</span>
         </button>
       </div>
-      <nav className="flex gap-1 border-t border-slate-100 px-4 py-2 sm:hidden">
+      <nav className="flex gap-1 overflow-x-auto border-t border-slate-100 px-4 py-2 sm:hidden">
         {links.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href;
+          const active = navActive(pathname, href);
           return (
             <Link
               key={href}

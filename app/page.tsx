@@ -8,6 +8,9 @@ import ContactCard from "@/components/ContactCard";
 import FilterBar from "@/components/FilterBar";
 import StatsBar from "@/components/StatsBar";
 import AdminNav from "@/components/AdminNav";
+import AdminOrderStatsPanel from "@/components/AdminOrderStatsPanel";
+import type { AdminOrderStats } from "@/lib/admin-order-stats";
+import { currentMonthRange } from "@/lib/date-range";
 import { Building2, Plus, X } from "lucide-react";
 
 export default function HomePage() {
@@ -23,6 +26,8 @@ export default function HomePage() {
     total: 0,
     byStatus: {},
   });
+  const [orderStats, setOrderStats] = useState<AdminOrderStats | null>(null);
+  const [orderStatsLoading, setOrderStatsLoading] = useState(true);
 
   const fetchContacts = useCallback(async () => {
     const res = await fetch("/api/contacts");
@@ -35,6 +40,14 @@ export default function HomePage() {
   useEffect(() => {
     fetchContacts();
   }, [fetchContacts]);
+
+  useEffect(() => {
+    const { from, to } = currentMonthRange();
+    fetch(`/api/admin/orders/stats?from=${from}&to=${to}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setOrderStats(data))
+      .finally(() => setOrderStatsLoading(false));
+  }, []);
 
   const allTags = Array.from(
     new Set(
@@ -134,6 +147,14 @@ export default function HomePage() {
       <AdminNav />
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <AdminOrderStatsPanel
+            stats={orderStats}
+            loading={orderStatsLoading}
+            compact
+          />
+        </section>
+
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-slate-900">업체 컨택</h2>
