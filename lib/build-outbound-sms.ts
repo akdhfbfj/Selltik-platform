@@ -4,7 +4,6 @@ export interface OutboundSmsProduct {
   smsName: string;
   officialName: string;
   consumerPrice: number;
-  baseShipping: number;
 }
 
 export interface OutboundCartLine {
@@ -35,16 +34,7 @@ export function buildOutboundSmsBodyFromCart(
     0
   );
 
-  const maxShipping = Math.max(0, ...items.map((i) => i.product.baseShipping));
-  const hasShipping = maxShipping > 0;
-
-  const parts = [...lines, "", `합계 ${formatKrw(subtotal)}`];
-  if (hasShipping) {
-    parts.push(
-      `※ 배송비 ${formatKrw(maxShipping)} 별도 (제주·도서산간 +4,000원)`
-    );
-  }
-  return parts.join("\n");
+  return [...lines, "", `합계 ${formatKrw(subtotal)}`].join("\n");
 }
 
 export function composeOutboundSms(

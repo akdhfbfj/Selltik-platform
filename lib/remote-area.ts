@@ -25,12 +25,29 @@ export function isRemoteArea(postalCode: string, address: string): boolean {
   return REMOTE_KEYWORDS.some((kw) => normalized.includes(kw));
 }
 
+export interface CalcShippingFeeOptions {
+  /** 체크박스 등 수동 지정. 없으면 주소로 자동 판별 */
+  isRemoteArea?: boolean;
+  /** 도서·산간 추가 배송비를 곱할 품목 수 (동일 상품 여러 개도 품목 1건) */
+  remoteLineCount?: number;
+}
+
 export function calcShippingFee(
   baseShipping: number,
   postalCode: string,
-  address: string
-): { shippingFee: number; isRemoteArea: boolean } {
-  const remote = isRemoteArea(postalCode, address);
-  const shippingFee = baseShipping + (remote ? REMOTE_SHIPPING_SURCHARGE : 0);
-  return { shippingFee, isRemoteArea: remote };
+  address: string,
+  options?: CalcShippingFeeOptions
+): {
+  shippingFee: number;
+  isRemoteArea: boolean;
+  remoteSurcharge: number;
+} {
+  const remote =
+    options?.isRemoteArea !== undefined
+      ? options.isRemoteArea
+      : isRemoteArea(postalCode, address);
+  const lineCount = Math.max(1, options?.remoteLineCount ?? 1);
+  const remoteSurcharge = remote ? REMOTE_SHIPPING_SURCHARGE * lineCount : 0;
+  const shippingFee = baseShipping + remoteSurcharge;
+  return { shippingFee, isRemoteArea: remote, remoteSurcharge };
 }

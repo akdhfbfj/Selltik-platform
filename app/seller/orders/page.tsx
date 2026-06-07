@@ -9,6 +9,10 @@ import {
 import { extractTextFromImage } from "@/lib/extract-image-text";
 import { formatKrw } from "@/lib/parse-supply-csv";
 import {
+  calcShippingFee,
+  REMOTE_SHIPPING_SURCHARGE,
+} from "@/lib/remote-area";
+import {
   getDefaultSmsFooter,
   getDefaultSmsHeader,
 } from "@/lib/sms-templates";
@@ -24,6 +28,7 @@ import {
   MapPin,
   MessageSquare,
   Plus,
+  Save,
   ShoppingCart,
   Trash2,
 } from "lucide-react";
@@ -31,6 +36,31 @@ import {
 interface CartLine {
   productId: string;
   quantity: number;
+}
+
+function recalcDraftPricing(
+  draft: OrderDraftPreview,
+  product: SellerProductView | null | undefined,
+  remoteChecked: boolean
+): Pick<
+  OrderDraftPreview,
+  "purchasePrice" | "shippingFee" | "supplyTotal" | "celticDepositAmount" | "isRemoteArea"
+> {
+  const purchasePrice = (product?.purchasePrice ?? 0) * draft.quantity;
+  const { shippingFee, isRemoteArea: isRemote } = calcShippingFee(
+    product?.baseShipping ?? 0,
+    draft.postalCode,
+    draft.address,
+    { isRemoteArea: remoteChecked, remoteLineCount: 1 }
+  );
+  const supplyTotal = purchasePrice + shippingFee;
+  return {
+    purchasePrice,
+    shippingFee,
+    supplyTotal,
+    celticDepositAmount: supplyTotal,
+    isRemoteArea: isRemote,
+  };
 }
 
 export default function SellerOrdersPage() {
@@ -47,6 +77,7 @@ export default function SellerOrdersPage() {
   >([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [smsSaveSuccess, setSmsSaveSuccess] = useState("");
   const [smsHeader, setSmsHeader] = useState("");
   const [smsFooter, setSmsFooter] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -176,9 +207,14 @@ export default function SellerOrdersPage() {
     setCart((prev) => prev.filter((l) => l.productId !== productId));
   };
 
+  const clearCart = () => {
+    setCart([]);
+  };
+
   const handleSaveSmsSettings = async () => {
     setSavingSettings(true);
     setError("");
+    setSmsSaveSuccess("");
     const res = await fetch("/api/seller/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -188,7 +224,7 @@ export default function SellerOrdersPage() {
       const data = await res.json();
       setError(data.error || "문구 저장에 실패했습니다.");
     } else {
-      setSuccess("상·하단 문구가 저장되었습니다.");
+      setSmsSaveSuccess("상·하단 문구가 저장되었습니다.");
     }
     setSavingSettings(false);
   };
@@ -254,22 +290,25 @@ export default function SellerOrdersPage() {
     const product = draft.productId
       ? products.find((p) => p.id === draft.productId)
       : null;
-    const baseShipping = product?.baseShipping ?? 0;
-    const remote =
-      postalCode.startsWith("63") ||
-      /제주|울릉|독도|거문도/.test(address.replace(/\s/g, ""));
-    const shippingFee = baseShipping + (remote ? 4000 : 0);
-    const supplyTotal = draft.purchasePrice + shippingFee;
     setDraft({
       ...draft,
       postalCode,
       address,
-      isRemoteArea: remote,
-      shippingFee,
-      supplyTotal,
-      celticDepositAmount: supplyTotal,
+      ...recalcDraftPricing(
+        { ...draft, postalCode, address },
+        product,
+        draft.isRemoteArea
+      ),
     });
     setAddressResults([]);
+  };
+
+  const handleRemoteToggle = (checked: boolean) => {
+    if (!draft) return;
+    const product = draft.productId
+      ? products.find((p) => p.id === draft.productId)
+      : null;
+    updateDraft(recalcDraftPricing(draft, product, checked));
   };
 
   const updateDraft = (patch: Partial<OrderDraftPreview>) => {
@@ -279,22 +318,11 @@ export default function SellerOrdersPage() {
   const handleProductSelect = (productId: string) => {
     const product = products.find((p) => p.id === productId);
     if (!product || !draft) return;
-    const purchasePrice = product.purchasePrice * draft.quantity;
-    const remote =
-      draft.postalCode.startsWith("63") ||
-      /제주|울릉|독도|거문도/.test(draft.address.replace(/\s/g, ""));
-    const shippingFee =
-      product.baseShipping + (remote ? 4000 : 0);
-    const supplyTotal = purchasePrice + shippingFee;
     setDraft({
       ...draft,
       productId: product.id,
       productName: product.officialName,
-      purchasePrice,
-      shippingFee,
-      supplyTotal,
-      isRemoteArea: remote,
-      celticDepositAmount: supplyTotal,
+      ...recalcDraftPricing(draft, product, draft.isRemoteArea),
       productMatch: {
         productId: product.id,
         officialName: product.officialName,
@@ -352,16 +380,44 @@ export default function SellerOrdersPage() {
           ① 고객에게 보낼 안내 문자
         </h3>
         <p className="mb-4 text-xs text-slate-500">
-          상·하단은 한 번 저장하면 계속 씁니다. 상품을 검색해 장바구니에 담으면
-          본문에 한 줄씩 누적됩니다.
+          상품을 담으면 본문에 한 줄씩 누적되고, 우측 미리보기에 바로
+          반영됩니다.
         </p>
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="space-y-3">
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-800">
+                상·하단 문구
+              </h4>
+              <p className="text-xs text-slate-500">
+                한 번 저장하면 다음에도 그대로 씁니다
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveSmsSettings}
+              disabled={savingSettings}
+              className="flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
+            >
+              {savingSettings ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              상·하단 저장
+            </button>
+          </div>
+          {smsSaveSuccess && (
+            <p className="mb-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+              {smsSaveSuccess}
+            </p>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
                 <label className="text-xs font-medium text-slate-600">
-                  상단 문구 (인사말 등)
+                  상단 (인사말 등)
                 </label>
                 <button
                   type="button"
@@ -385,7 +441,7 @@ export default function SellerOrdersPage() {
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
                 <label className="text-xs font-medium text-slate-600">
-                  하단 문구 (계좌번호·안내 등)
+                  하단 (계좌번호·안내 등)
                 </label>
                 <button
                   type="button"
@@ -396,23 +452,16 @@ export default function SellerOrdersPage() {
                 </button>
               </div>
               <textarea
-                className={`${inputClass} min-h-[96px] resize-y bg-white`}
+                className={`${inputClass} min-h-[72px] resize-y bg-white`}
                 placeholder={getDefaultSmsFooter()}
                 value={smsFooter}
                 onChange={(e) => setSmsFooter(e.target.value)}
               />
             </div>
-            <button
-              type="button"
-              onClick={handleSaveSmsSettings}
-              disabled={savingSettings}
-              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-            >
-              {savingSettings && <Loader2 className="h-4 w-4 animate-spin" />}
-              상·하단 문구 저장
-            </button>
           </div>
+        </div>
 
+        <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-3">
             <div className="flex flex-wrap items-end gap-2">
               <div className="min-w-[200px] flex-1">
@@ -452,16 +501,27 @@ export default function SellerOrdersPage() {
             </div>
 
             <div className="rounded-xl border-2 border-slate-800 bg-white p-3">
-              <div className="mb-2 flex items-center justify-between">
+              <div className="mb-2 flex items-center justify-between gap-2">
                 <h4 className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
                   <ShoppingCart className="h-4 w-4" />
                   장바구니
                 </h4>
-                {cart.length > 0 && (
-                  <span className="text-sm font-semibold text-blue-700">
-                    합계 {formatKrw(cartSubtotal)}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {cart.length > 0 && (
+                    <>
+                      <span className="text-sm font-semibold text-blue-700">
+                        합계 {formatKrw(cartSubtotal)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={clearCart}
+                        className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                      >
+                        초기화
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               {cart.length === 0 ? (
                 <p className="py-6 text-center text-sm text-slate-400">
@@ -505,21 +565,23 @@ export default function SellerOrdersPage() {
                 </ul>
               )}
             </div>
+          </div>
 
+          <div className="space-y-3 md:sticky md:top-4 md:self-start">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">
                 미리보기 (복사해서 문자 앱에 붙여넣기)
               </label>
-              <pre className="min-h-[160px] whitespace-pre-wrap rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-800">
-                {cart.length > 0
+              <pre className="min-h-[240px] whitespace-pre-wrap rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-800">
+                {outboundPreview.trim()
                   ? outboundPreview
-                  : "장바구니에 상품을 담으면 미리보기가 표시됩니다."}
+                  : "상·하단 문구를 저장하거나 상품을 담으면 미리보기가 표시됩니다."}
               </pre>
             </div>
             <button
               type="button"
               onClick={handleCopyOutbound}
-              disabled={cart.length === 0}
+              disabled={!outboundPreview.trim()}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
             >
               {copied ? (
@@ -663,13 +725,13 @@ export default function SellerOrdersPage() {
                   const product = draft.productId
                     ? products.find((p) => p.id === draft.productId)
                     : null;
-                  const purchasePrice = (product?.purchasePrice ?? 0) * quantity;
-                  const supplyTotal = purchasePrice + draft.shippingFee;
                   updateDraft({
                     quantity,
-                    purchasePrice,
-                    supplyTotal,
-                    celticDepositAmount: supplyTotal,
+                    ...recalcDraftPricing(
+                      { ...draft, quantity },
+                      product,
+                      draft.isRemoteArea
+                    ),
                   });
                 }}
               />
@@ -775,6 +837,26 @@ export default function SellerOrdersPage() {
                 onChange={(e) => updateDraft({ shippingMemo: e.target.value })}
               />
             </div>
+            <div className="sm:col-span-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                  checked={draft.isRemoteArea}
+                  onChange={(e) => handleRemoteToggle(e.target.checked)}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-slate-800">
+                    제주·도서산간 (+{formatKrw(REMOTE_SHIPPING_SURCHARGE)}/품목)
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    문자를 보고 직접 체크하세요. 품목당{" "}
+                    {formatKrw(REMOTE_SHIPPING_SURCHARGE)} 추가 (같은 상품
+                    여러 개도 품목 1건, 다른 상품이면 품목마다 추가)
+                  </span>
+                </span>
+              </label>
+            </div>
           </div>
 
           <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm">
@@ -786,7 +868,9 @@ export default function SellerOrdersPage() {
               <span className="text-slate-600">
                 택배비
                 {draft.isRemoteArea && (
-                  <span className="ml-1 text-amber-600">(제주·도서 +4,000)</span>
+                  <span className="ml-1 text-amber-600">
+                    (기본 + 도서산간 {formatKrw(REMOTE_SHIPPING_SURCHARGE)}/품목)
+                  </span>
                 )}
               </span>
               <span>{formatKrw(draft.shippingFee)}</span>

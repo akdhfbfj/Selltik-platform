@@ -92,10 +92,11 @@ export async function buildOrderDraft(
     ? product.purchasePrice * parsed.quantity
     : 0;
   const baseShipping = product?.baseShipping ?? 0;
-  const { shippingFee, isRemoteArea } = calcShippingFee(
+  const { shippingFee } = calcShippingFee(
     baseShipping,
     parsed.postalCode,
-    parsed.address
+    parsed.address,
+    { isRemoteArea: false, remoteLineCount: 1 }
   );
   const supplyTotal = purchasePrice + shippingFee;
 
@@ -113,7 +114,7 @@ export async function buildOrderDraft(
     purchasePrice,
     shippingFee,
     supplyTotal,
-    isRemoteArea,
+    isRemoteArea: false,
     rawSmsText,
     status: "draft",
     productMatch: {
@@ -236,10 +237,11 @@ export function recalcOrderPricing(
     : null;
   const unitPurchase = product?.purchasePrice ?? 0;
   const purchasePrice = unitPurchase * draft.quantity;
-  const { shippingFee, isRemoteArea } = calcShippingFee(
+  const { shippingFee } = calcShippingFee(
     product?.baseShipping ?? 0,
     draft.postalCode,
-    draft.address
+    draft.address,
+    { isRemoteArea: draft.isRemoteArea, remoteLineCount: 1 }
   );
   const supplyTotal = purchasePrice + shippingFee;
   return {
@@ -247,7 +249,6 @@ export function recalcOrderPricing(
     purchasePrice,
     shippingFee,
     supplyTotal,
-    isRemoteArea,
     celticDepositAmount: supplyTotal,
     productMatch: {
       productId: product?.id ?? null,
