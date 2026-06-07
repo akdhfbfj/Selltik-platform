@@ -5,12 +5,12 @@ import {
   formatSelectedPostcodeAddress,
   type PostcodeSelection,
 } from "@/lib/extract-detail-address";
-import { MapPin } from "lucide-react";
-import Script from "next/script";
+import { Loader2, MapPin } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-const POSTCODE_SCRIPT =
-  "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
+/** 공식 가이드: t1.kakaocdn.net (구 daumcdn은 동작 불안정) */
+export const KAKAO_POSTCODE_SCRIPT =
+  "https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
 
 export interface PostcodePickResult {
   postalCode: string;
@@ -25,7 +25,12 @@ interface KakaoPostcodePickerProps {
   inputSlot: ReactNode;
 }
 
-type PostcodeInstance = {
+type PostcodeCtor = new (options: {
+  oncomplete: (data: PostcodeSelection) => void;
+  onresize?: (size: { height: number }) => void;
+  hideMapBtn?: boolean;
+  hideEngBtn?: boolean;
+}) => {
   embed: (
     element: HTMLElement,
     options?: { q?: string; autoClose?: boolean }
@@ -34,15 +39,14 @@ type PostcodeInstance = {
 
 declare global {
   interface Window {
-    kakao?: {
-      Postcode: new (options: {
-        oncomplete: (data: PostcodeSelection) => void;
-        onresize?: (size: { height: number }) => void;
-        hideMapBtn?: boolean;
-        hideEngBtn?: boolean;
-      }) => PostcodeInstance;
-    };
+    kakao?: { Postcode: PostcodeCtor };
+    daum?: { Postcode: PostcodeCtor };
   }
+}
+
+function getPostcodeConstructor(): PostcodeCtor | null {
+  if (typeof window === "undefined") return null;
+  return window.kakao?.Postcode ?? window.daum?.Postcode ?? null;
 }
 
 export default function KakaoPostcodePicker({
@@ -54,14 +58,15 @@ export default function KakaoPostcodePicker({
   const wrapRef = useRef<HTMLDivElement>(null);
   const [scriptReady, setScriptReady] = useState(false);
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [embedPending, setEmbedPending] = useState(false);
 
   useEffect(() => {
-    if (window.kakao?.Postcode) setScriptReady(true);
+    if (getPostcodeConstructor()) setScriptReady(true);
   }, []);
 
   const closeSearch = useCallback(() => {
     setOpen(false);
+    setEmbedPending(false);
     if (wrapRef.current) {
       wrapRef.current.innerHTML = "";
       wrapRef.current.style.height = "";
@@ -74,57 +79,84 @@ export default function KakaoPostcodePicker({
       onStatus?.("먼저 주소를 입력해 주세요.");
       return;
     }
-    if (!window.kakao?.Postcode) {
+    if (!getPostcodeConstructor()) {
       onStatus?.("우편번호 서비스를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
       return;
     }
-    if (!wrapRef.current) return;
-
-    setLoading(true);
     setOpen(true);
-    const parsed = extractDetailAddress(raw);
-    wrapRef.current.innerHTML = "";
+    setEmbedPending(true);
+  }, [rawAddress, onStatus]);
 
-    const postcode = new window.kakao.Postcode({
-      oncomplete: (data) => {
-        const result = formatSelectedPostcodeAddress(data, parsed.detail);
-        onPick(result);
-        onStatus?.("주소를 적용했습니다.");
-        closeSearch();
-        setLoading(false);
-      },
-      onresize: (size) => {
-        if (wrapRef.current) {
-          wrapRef.current.style.height = `${Math.max(size.height, 420)}px`;
-        }
-      },
-      hideMapBtn: true,
-      hideEngBtn: true,
-    });
+  useEffect(() => {
+    if (!open || !embedPending) return;
 
-    postcode.embed(wrapRef.current, { q: parsed.base, autoClose: true });
-    onStatus?.("추출한 주소로 검색했습니다. 결과를 선택해 주세요.");
-    setLoading(false);
-  }, [rawAddress, onPick, onStatus, closeSearch]);
+    let cancelled = false;
+    const parsed = extractDetailAddress(rawAddress.trim());
+
+    const runEmbed = () => {
+      if (cancelled) return;
+      const Postcode = getPostcodeConstructor();
+      const wrap = wrapRef.current;
+      if (!Postcode) return;
+      if (!wrap) {
+        requestAnimationFrame(runEmbed);
+        return;
+      }
+
+      wrap.innerHTML = "";
+      const postcode = new Postcode({
+        oncomplete: (data) => {
+          const result = formatSelectedPostcodeAddress(data, parsed.detail);
+          onPick(result);
+          onStatus?.("주소를 적용했습니다.");
+          closeSearch();
+        },
+        onresize: (size) => {
+          if (wrapRef.current) {
+            wrapRef.current.style.height = `${Math.max(size.height, 420)}px`;
+          }
+        },
+        hideMapBtn: true,
+        hideEngBtn: true,
+      });
+
+      postcode.embed(wrap, { q: parsed.base, autoClose: true });
+      onStatus?.("추출한 주소로 검색했습니다. 결과를 선택해 주세요.");
+      setEmbedPending(false);
+    };
+
+    runEmbed();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, embedPending, rawAddress, onPick, onStatus, closeSearch]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (getPostcodeConstructor()) {
+        setScriptReady(true);
+        window.clearInterval(timer);
+      }
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, []);
 
   return (
-    <>
-      <Script
-        src={POSTCODE_SCRIPT}
-        strategy="lazyOnload"
-        onReady={() => setScriptReady(true)}
-      />
-      <div className="space-y-2">
+    <div className="space-y-2">
         <div className="flex gap-2">
           {inputSlot}
           <button
             type="button"
             onClick={openSearch}
-            disabled={loading || !rawAddress.trim() || !scriptReady}
+            disabled={!rawAddress.trim() || (open && embedPending)}
             className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
             title="카카오 우편번호 검색"
           >
-            <MapPin className="h-4 w-4" />
+            {!scriptReady && open && embedPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <MapPin className="h-4 w-4" />
+            )}
             검색
           </button>
         </div>
@@ -145,7 +177,6 @@ export default function KakaoPostcodePicker({
             <div ref={wrapRef} className="w-full min-h-[420px]" />
           </div>
         )}
-      </div>
-    </>
+    </div>
   );
 }

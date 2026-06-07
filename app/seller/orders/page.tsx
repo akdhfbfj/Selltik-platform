@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import KakaoPostcodePicker, {
+  KAKAO_POSTCODE_SCRIPT,
   type PostcodePickResult,
 } from "@/components/KakaoPostcodePicker";
+import Script from "next/script";
 import ProductSearchInput from "@/components/ProductSearchInput";
 import {
   buildOutboundSmsBodyFromCart,
@@ -354,7 +356,9 @@ export default function SellerOrdersPage() {
     "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100";
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+    <>
+      <Script src={KAKAO_POSTCODE_SCRIPT} strategy="afterInteractive" />
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-slate-900">문자 → 발주</h2>
         <p className="mt-1 text-sm text-slate-500">
@@ -953,5 +957,6 @@ export default function SellerOrdersPage() {
         )}
       </div>
     </div>
+    </>
   );
 }
