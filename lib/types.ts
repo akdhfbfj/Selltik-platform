@@ -157,7 +157,14 @@ export interface Shop {
   plan: ShopPlan;
   contactEmail: string;
   authUserId: string;
+  smsHeader: string;
+  smsFooter: string;
   createdAt: string;
+}
+
+export interface ShopSmsSettings {
+  smsHeader: string;
+  smsFooter: string;
 }
 
 export interface ShopInput {
@@ -196,3 +203,66 @@ export interface MasterProductInput {
   profitAmount?: number;
   profitRate?: string;
 }
+
+export type OrderStatus = "draft" | "confirmed" | "exported" | "paid";
+
+export interface Order {
+  id: string;
+  shopId: string;
+  productId: string | null;
+  orderDate: string;
+  productName: string;
+  quantity: number;
+  ordererName: string;
+  recipientName: string;
+  contactPhone: string;
+  contactPhone2: string;
+  postalCode: string;
+  address: string;
+  shippingMemo: string;
+  purchasePrice: number;
+  shippingFee: number;
+  supplyTotal: number;
+  celticDepositAmount: number | null;
+  isRemoteArea: boolean;
+  rawSmsText: string;
+  status: OrderStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrderInput {
+  productId?: string | null;
+  productName: string;
+  quantity: number;
+  ordererName: string;
+  recipientName: string;
+  contactPhone: string;
+  contactPhone2?: string;
+  postalCode: string;
+  address: string;
+  shippingMemo?: string;
+  purchasePrice: number;
+  shippingFee: number;
+  supplyTotal: number;
+  isRemoteArea: boolean;
+  rawSmsText?: string;
+  status?: OrderStatus;
+}
+
+export interface OrderDraftPreview extends OrderInput {
+  productMatch: {
+    productId: string | null;
+    officialName: string | null;
+    matchedBy: "sms_alias" | "official_name" | "none";
+    consumerPrice: number;
+  };
+  celticDepositAmount: number;
+}
+
+export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  draft: "초안",
+  confirmed: "확정",
+  exported: "출력됨",
+  paid: "입금확인",
+};

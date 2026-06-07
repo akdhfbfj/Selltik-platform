@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import type { Shop, ShopInput } from "./types";
+import type { Shop, ShopInput, ShopSmsSettings } from "./types";
 import { createServerClient } from "./supabase/server";
 
 type DbRow = Record<string, unknown>;
@@ -11,8 +11,28 @@ function rowToShop(row: DbRow): Shop {
     plan: row.plan as Shop["plan"],
     contactEmail: (row.contact_email as string) ?? "",
     authUserId: (row.auth_user_id as string) ?? "",
+    smsHeader: (row.sms_header as string) ?? "",
+    smsFooter: (row.sms_footer as string) ?? "",
     createdAt: row.created_at as string,
   };
+}
+
+export async function updateShopSmsSettings(
+  shopId: string,
+  settings: ShopSmsSettings
+): Promise<Shop | null> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("shops")
+    .update({
+      sms_header: settings.smsHeader.trim(),
+      sms_footer: settings.smsFooter.trim(),
+    })
+    .eq("id", shopId)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return data ? rowToShop(data) : null;
 }
 
 export async function getAllShops(): Promise<Shop[]> {

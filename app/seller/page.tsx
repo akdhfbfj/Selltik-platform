@@ -20,7 +20,7 @@ export default async function SellerHomePage() {
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-slate-900">안녕하세요, {shop.name}</h2>
         <p className="mt-1 text-sm text-slate-500">
-          발주·문자 기능은 순서대로 추가됩니다. 지금은 계정이 연결된 상태입니다.
+          문자 붙여넣기로 발주 초안을 만들 수 있습니다.
         </p>
       </div>
 
@@ -41,11 +41,14 @@ export default async function SellerHomePage() {
           <h3 className="mt-3 font-semibold text-slate-900">상품·공급가</h3>
           <p className="mt-1 text-sm text-slate-500">판매가 확인 · 문자 상품명 설정</p>
         </Link>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <Link
+          href="/seller/orders"
+          className="rounded-2xl border border-emerald-200 bg-emerald-50/30 p-5 shadow-sm transition hover:border-emerald-300"
+        >
           <MessageSquare className="h-8 w-8 text-emerald-600" />
           <h3 className="mt-3 font-semibold text-slate-900">문자 → 발주</h3>
-          <p className="mt-1 text-sm text-slate-500">3단계: 붙여넣기 자동 기입</p>
-        </div>
+          <p className="mt-1 text-sm text-slate-500">문자 붙여넣기 · 발주 초안</p>
+        </Link>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <ClipboardList className="h-8 w-8 text-emerald-600" />
           <h3 className="mt-3 font-semibold text-slate-900">발주서 출력</h3>
