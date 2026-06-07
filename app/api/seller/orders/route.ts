@@ -4,7 +4,7 @@ import {
   formatOrderDbError,
   getOrdersByShop,
 } from "@/lib/orders";
-import type { OrderInput } from "@/lib/types";
+import type { OrderDraftPreview } from "@/lib/types";
 import { requireSellerShop } from "@/lib/seller";
 
 export async function GET() {
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = (await request.json()) as OrderInput;
+    const body = (await request.json()) as OrderDraftPreview;
     if (!body.productName?.trim()) {
       return NextResponse.json({ error: "상품명은 필수입니다." }, { status: 400 });
     }

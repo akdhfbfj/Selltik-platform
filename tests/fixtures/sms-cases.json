@@ -1,0 +1,100 @@
+[
+  {
+    "id": "case-01-ordered-reply",
+    "note": "A. 번호 목록 답장 (김해월)",
+    "input": "김해월\n해월\n광주 광산구 첨단\n중앙로68번길22\n205동1401호 (부영2차)\n김해월\n010-9181-7476",
+    "expect": {
+      "ordererName": "김해월",
+      "recipientName": "김해월",
+      "contactPhone": "010-9181-7476",
+      "addressIncludes": ["광산구", "중앙로"]
+    }
+  },
+  {
+    "id": "case-02-labeled",
+    "note": "C. 성명/주소/핸 (전선영)",
+    "input": "춤추는여인 입니다!!\n블랜드기 주문요!\n성명: 전선영\n주소: 경기도 의정부 가능로 85번길40 궁전빌리지 702호\n핸 010 8962 1055",
+    "expect": {
+      "recipientName": "전선영",
+      "contactPhone": "010-8962-1055",
+      "addressIncludes": ["의정부"]
+    }
+  },
+  {
+    "id": "case-03-multiline-block",
+    "note": "B. 이름·전화·주소 여러 줄 (이수진)",
+    "input": "이수진\n010 7768 8856\n경기광주 포돌이로117\n서희스타힐스 102동603호\n이수진입니다",
+    "expect": {
+      "recipientName": "이수진",
+      "contactPhone": "010-7768-8856",
+      "addressIncludes": ["포돌이로", "서희스타힐스"]
+    }
+  },
+  {
+    "id": "case-04-dense-line",
+    "note": "B. 한 줄 덩어리 (유병주)",
+    "input": "경기도 부천시 원미구 역곡로46번길 53 202호 대창스페이스빌 010 7425 8825 유병주 입니다 당근 사랑 입니다",
+    "expect": {
+      "recipientName": "유병주",
+      "contactPhone": "010-7425-8825",
+      "addressIncludes": ["부천시", "역곡로"]
+    }
+  },
+  {
+    "id": "case-06-name-address-phone",
+    "note": "B. 이름+주소+전화 블록 (이소현)",
+    "input": "이소현 서울시 중랑구 망우로63길18 에이스빌 에이동201호 010 3428 1368",
+    "expect": {
+      "recipientName": "이소현",
+      "contactPhone": "010-3428-1368",
+      "addressIncludes": ["중랑구", "망우로"]
+    }
+  },
+  {
+    "id": "case-10-gunsan-line",
+    "note": "B. 입금+한 줄 (서윤경)",
+    "input": "입금했어요\n군산시 칠성3길8 미룡대명2차 202동1810호 서윤경 010 7190 1110 입니다",
+    "expect": {
+      "recipientName": "서윤경",
+      "contactPhone": "010-7190-1110",
+      "addressIncludes": ["군산시", "칠성3길"]
+    }
+  },
+  {
+    "id": "case-11-ordered-four-lines",
+    "note": "A. 4줄 순서 (신경미)",
+    "input": "입완했습니다\n신경미\n홍콩야자\n신경미\n경남 창원시 진해구 월남로 144.105-702 (우방아이유쉘아파트)",
+    "expect": {
+      "ordererName": "신경미",
+      "recipientName": "신경미",
+      "addressIncludes": ["창원시", "월남로"]
+    }
+  },
+  {
+    "id": "case-12-park-youngmi",
+    "note": "복합 여러 줄 (박영미)",
+    "input": "입금했어요\n박영미 010 9191 0561 경기도 성남시 수정구 남문로52번길 4-13 102호\n현금영수증 해 주세요\n냉각 이불 패드 주문요 퀸으로 이불 청색",
+    "expect": {
+      "recipientName": "박영미",
+      "contactPhone": "010-9191-0561",
+      "addressIncludes": ["성남시", "남문로"]
+    }
+  },
+  {
+    "id": "case-13-address-only",
+    "note": "D. 주소만 (이미화)",
+    "input": "경기도 광주시 도척면 도척로 327-2 204호 진우리 동화타운",
+    "expect": {
+      "addressIncludes": ["광주시", "도척면", "도척로"]
+    }
+  },
+  {
+    "id": "case-09-gunsan-dense",
+    "note": "B. 한 줄 뭉침 (강민정) — 부분 매칭",
+    "input": "입금했어요 파랑이로 부탁 전북 군산시신영1길19—9강민정 헤어샵 01063004635",
+    "expect": {
+      "contactPhone": "010-6300-4635",
+      "addressIncludes": ["군산"]
+    }
+  }
+]

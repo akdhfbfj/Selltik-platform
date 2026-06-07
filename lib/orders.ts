@@ -3,6 +3,7 @@ import type { Order, OrderDraftPreview, OrderInput, SellerProductView } from "./
 import type { ParsedOrderSms } from "./parse-order-sms";
 import { calcShippingFee } from "./remote-area";
 import { getSellerProductViews } from "./products";
+import { saveSmsParseSample } from "./sms-parse-samples";
 import { createServerClient } from "./supabase/server";
 
 type DbRow = Record<string, unknown>;
@@ -124,6 +125,7 @@ export async function buildOrderDraft(
       consumerPrice: product?.consumerPrice ?? 0,
     },
     celticDepositAmount: supplyTotal,
+    autoParsed: { ...parsed },
   };
 }
 
@@ -173,7 +175,7 @@ export async function getOrdersByShop(shopId: string): Promise<Order[]> {
 
 export async function createOrder(
   shopId: string,
-  input: OrderInput
+  input: OrderInput & { autoParsed?: ParsedOrderSms }
 ): Promise<Order> {
   const supabase = createServerClient();
   const now = new Date().toISOString();
@@ -185,6 +187,16 @@ export async function createOrder(
     created_at: now,
   });
   if (error) throw error;
+
+  if (input.autoParsed && input.rawSmsText?.trim()) {
+    await saveSmsParseSample({
+      shopId,
+      orderId: id,
+      rawSmsText: input.rawSmsText,
+      autoParsed: input.autoParsed,
+      sellerFinal: input,
+    });
+  }
 
   const { data, error: fetchError } = await supabase
     .from("orders")

@@ -1,3 +1,5 @@
+import type { ParsedOrderSms } from "./parse-order-sms";
+
 export type ContactStatus =
   | "new"
   | "contacting"
@@ -258,6 +260,8 @@ export interface OrderDraftPreview extends OrderInput {
     consumerPrice: number;
   };
   celticDepositAmount: number;
+  /** 분석 직후 자동 파싱 결과 (셀러 수정 학습용) */
+  autoParsed?: ParsedOrderSms;
 }
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
