@@ -277,17 +277,28 @@ export async function patchOrderStatus(
   id: string,
   status: Order["status"]
 ): Promise<Order | null> {
+  const updated = await patchOrdersStatus(shopId, [id], status);
+  return updated[0] ?? null;
+}
+
+export async function patchOrdersStatus(
+  shopId: string,
+  ids: string[],
+  status: Order["status"]
+): Promise<Order[]> {
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  if (uniqueIds.length === 0) return [];
+
   const supabase = createServerClient();
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("orders")
     .update({ status, updated_at: now })
-    .eq("id", id)
     .eq("shop_id", shopId)
-    .select("*")
-    .maybeSingle();
+    .in("id", uniqueIds)
+    .select("*");
   if (error) throw error;
-  return data ? rowToOrder(data) : null;
+  return (data ?? []).map(rowToOrder);
 }
 
 export async function deleteOrder(

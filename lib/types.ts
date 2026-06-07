@@ -190,10 +190,25 @@ export interface MasterProduct {
   updatedAt: string;
 }
 
+export type ProductReviewReason = "new" | "price_change" | "info_change";
+
+export interface ProductChangeDetail {
+  previous?: {
+    officialName?: string;
+    description?: string;
+    purchasePrice?: number;
+    baseShipping?: number;
+    supplyTotal?: number;
+    consumerPrice?: number;
+  };
+}
+
 export interface SellerProductView extends MasterProduct {
   smsName: string;
   /** 공급가·판매가 등 마스터 정보 변경 시 셀러 확인 필요 */
   needsReview: boolean;
+  reviewReason?: ProductReviewReason;
+  changeDetail?: ProductChangeDetail;
 }
 
 export interface MasterProductInput {

@@ -1,5 +1,11 @@
 import { v4 as uuidv4 } from "uuid";
-import type { MasterProduct, MasterProductInput, SellerProductView } from "./types";
+import type {
+  MasterProduct,
+  MasterProductInput,
+  ProductChangeDetail,
+  ProductReviewReason,
+  SellerProductView,
+} from "./types";
 import type { ParsedSupplyProduct } from "./parse-supply-csv";
 import { getAllShops } from "./shops";
 import { createServerClient } from "./supabase/server";
@@ -148,12 +154,56 @@ function parsedItemDiffers(
   );
 }
 
+export interface ProductReviewFlag {
+  productId: string;
+  reason: ProductReviewReason;
+  changeDetail?: ProductChangeDetail;
+}
+
+function buildChangeDetailFromProduct(
+  product: MasterProduct
+): ProductChangeDetail {
+  return {
+    previous: {
+      officialName: product.officialName,
+      description: product.description,
+      purchasePrice: product.purchasePrice,
+      baseShipping: product.baseShipping,
+      supplyTotal: product.supplyTotal,
+      consumerPrice: product.consumerPrice,
+    },
+  };
+}
+
+export function classifyProductReviewReason(
+  existing: MasterProduct | null | undefined,
+  next: {
+    purchasePrice: number;
+    baseShipping: number;
+    consumerPrice: number;
+    officialName?: string;
+    description?: string;
+  }
+): ProductReviewReason {
+  if (!existing) return "new";
+  const priceChanged =
+    existing.purchasePrice !== next.purchasePrice ||
+    existing.baseShipping !== next.baseShipping ||
+    existing.consumerPrice !== next.consumerPrice ||
+    existing.supplyTotal !== next.purchasePrice + next.baseShipping;
+  if (priceChanged) return "price_change";
+  return "info_change";
+}
+
 /** 변경·신규 상품 — 모든 셀러에게 확인 요청 (문자용 상품명은 그대로) */
 export async function flagProductsForSellerReview(
-  productIds: string[]
+  flags: ProductReviewFlag[]
 ): Promise<void> {
-  const uniqueIds = [...new Set(productIds)];
-  if (uniqueIds.length === 0) return;
+  const byId = new Map<string, ProductReviewFlag>();
+  for (const flag of flags) {
+    byId.set(flag.productId, flag);
+  }
+  if (byId.size === 0) return;
 
   const shops = await getAllShops();
   if (shops.length === 0) return;
@@ -161,13 +211,15 @@ export async function flagProductsForSellerReview(
   const supabase = createServerClient();
   const now = new Date().toISOString();
   const rows = shops.flatMap((shop) =>
-    uniqueIds.map((productId) => ({
+    [...byId.values()].map((flag) => ({
       id: uuidv4(),
       shop_id: shop.id,
-      product_id: productId,
+      product_id: flag.productId,
       needs_review: true,
       flagged_at: now,
       acknowledged_at: null,
+      review_reason: flag.reason,
+      change_detail: flag.changeDetail ?? null,
     }))
   );
 
@@ -185,17 +237,29 @@ export async function acknowledgeProductReview(
   shopId: string,
   productId: string
 ): Promise<boolean> {
+  const count = await acknowledgeProductReviews(shopId, [productId]);
+  return count > 0;
+}
+
+export async function acknowledgeProductReviews(
+  shopId: string,
+  productIds?: string[]
+): Promise<number> {
   const supabase = createServerClient();
   const now = new Date().toISOString();
-  const { data, error } = await supabase
+  let query = supabase
     .from("seller_product_reviews")
     .update({ needs_review: false, acknowledged_at: now })
     .eq("shop_id", shopId)
-    .eq("product_id", productId)
-    .eq("needs_review", true)
-    .select("id");
+    .eq("needs_review", true);
+
+  if (productIds?.length) {
+    query = query.in("product_id", productIds);
+  }
+
+  const { data, error } = await query.select("id");
   if (error) throw error;
-  return (data?.length ?? 0) > 0;
+  return data?.length ?? 0;
 }
 
 export async function createMasterProduct(
@@ -213,7 +277,9 @@ export async function createMasterProduct(
     created_at: now,
   });
   if (error) throw error;
-  await flagProductsForSellerReview([id]);
+  await flagProductsForSellerReview([
+    { productId: id, reason: "new" },
+  ]);
   return (await getMasterProductById(id))!;
 }
 
@@ -232,7 +298,15 @@ export async function updateMasterProduct(
     .update(toDbRow(input, existing.sortOrder, now))
     .eq("id", id);
   if (error) throw error;
-  if (changed) await flagProductsForSellerReview([id]);
+  if (changed) {
+    await flagProductsForSellerReview([
+      {
+        productId: id,
+        reason: classifyProductReviewReason(existing, input),
+        changeDetail: buildChangeDetailFromProduct(existing),
+      },
+    ]);
+  }
   return getMasterProductById(id);
 }
 
@@ -289,13 +363,19 @@ export async function importSupplyProducts(
   );
   const nameToMeta = new Map(existingMeta.map((r) => [r.official_name, r]));
 
-  const finalChangedIds: string[] = [];
+  const reviewFlags: ProductReviewFlag[] = [];
   const upsertRows = uniqueItems.map((item) => {
     const meta = nameToMeta.get(item.officialName);
     const existing = nameToProduct.get(item.officialName);
     const id = meta?.id ?? uuidv4();
     if (!existing || parsedItemDiffers(existing, item)) {
-      finalChangedIds.push(id);
+      reviewFlags.push({
+        productId: id,
+        reason: classifyProductReviewReason(existing, item),
+        changeDetail: existing
+          ? buildChangeDetailFromProduct(existing)
+          : undefined,
+      });
     }
     return {
       id,
@@ -322,13 +402,13 @@ export async function importSupplyProducts(
     if (error) throw error;
   }
 
-  await flagProductsForSellerReview(finalChangedIds);
+  await flagProductsForSellerReview(reviewFlags);
 
   return {
     imported: uniqueItems.length,
     parsed,
     duplicates,
-    changed: finalChangedIds.length,
+    changed: reviewFlags.length,
   };
 }
 
@@ -342,7 +422,7 @@ export async function getSellerProductViews(
       supabase.from("seller_product_aliases").select("*").eq("shop_id", shopId),
       supabase
         .from("seller_product_reviews")
-        .select("product_id")
+        .select("product_id, review_reason, change_detail")
         .eq("shop_id", shopId)
         .eq("needs_review", true),
     ]);
@@ -352,15 +432,26 @@ export async function getSellerProductViews(
   const aliasMap = new Map(
     (aliases ?? []).map((a) => [a.product_id as string, a.sms_name as string])
   );
-  const reviewSet = new Set(
-    (reviews ?? []).map((r) => r.product_id as string)
+  const reviewMap = new Map(
+    (reviews ?? []).map((r) => [
+      r.product_id as string,
+      {
+        reason: (r.review_reason as ProductReviewReason) ?? "price_change",
+        detail: (r.change_detail as ProductChangeDetail | null) ?? undefined,
+      },
+    ])
   );
 
-  return products.map((p) => ({
-    ...p,
-    smsName: aliasMap.get(p.id) ?? "",
-    needsReview: reviewSet.has(p.id),
-  }));
+  return products.map((p) => {
+    const review = reviewMap.get(p.id);
+    return {
+      ...p,
+      smsName: aliasMap.get(p.id) ?? "",
+      needsReview: !!review,
+      reviewReason: review?.reason,
+      changeDetail: review?.detail,
+    };
+  });
 }
 
 export async function countPendingProductReviews(shopId: string): Promise<number> {

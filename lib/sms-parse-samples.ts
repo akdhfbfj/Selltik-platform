@@ -17,6 +17,36 @@ const LEARN_FIELDS = [
 
 export type LearnField = (typeof LEARN_FIELDS)[number];
 
+/** 전체 셀러 공통 학습 (답장 형식) */
+export const GLOBAL_LEARN_FIELDS = [
+  "ordererName",
+  "recipientName",
+  "contactPhone",
+  "contactPhone2",
+  "postalCode",
+  "address",
+  "shippingMemo",
+] as const satisfies readonly LearnField[];
+
+export type GlobalLearnField = (typeof GLOBAL_LEARN_FIELDS)[number];
+
+/** 셀러별 학습 */
+export const SHOP_LEARN_FIELDS = [
+  "productName",
+  "quantity",
+] as const satisfies readonly LearnField[];
+
+export type ShopLearnField = (typeof SHOP_LEARN_FIELDS)[number];
+
+export interface SmsParseSampleRow {
+  shop_id: string;
+  raw_sms_text: string;
+  auto_parsed: ParsedOrderSms;
+  seller_final: Record<LearnField, string | number>;
+  corrected_fields: LearnField[];
+  created_at?: string;
+}
+
 export interface SmsParseSampleInput {
   shopId: string;
   orderId: string | null;
@@ -93,4 +123,45 @@ export async function saveSmsParseSample(
   if (error) {
     console.error("sms_parse_samples insert failed:", error.message);
   }
+}
+
+const SAMPLE_FETCH_LIMIT = 400;
+
+/** 분석 시 학습 데이터 조회 — 전역 필드는 전체 셀러, 상품은 해당 셀러만 */
+export async function fetchLearningSamples(
+  shopId: string
+): Promise<{ global: SmsParseSampleRow[]; shopProduct: SmsParseSampleRow[] }> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("sms_parse_samples")
+    .select(
+      "shop_id, raw_sms_text, auto_parsed, seller_final, corrected_fields, created_at"
+    )
+    .order("created_at", { ascending: false })
+    .limit(SAMPLE_FETCH_LIMIT);
+
+  if (error) {
+    if (
+      error.message?.includes("sms_parse_samples") &&
+      error.message.includes("does not exist")
+    ) {
+      return { global: [], shopProduct: [] };
+    }
+    throw error;
+  }
+
+  const rows = (data ?? []) as SmsParseSampleRow[];
+  const globalSet = new Set<GlobalLearnField>(GLOBAL_LEARN_FIELDS);
+  const shopSet = new Set<ShopLearnField>(SHOP_LEARN_FIELDS);
+
+  const global = rows.filter((r) =>
+    r.corrected_fields?.some((f) => globalSet.has(f as GlobalLearnField))
+  );
+  const shopProduct = rows.filter(
+    (r) =>
+      r.shop_id === shopId &&
+      r.corrected_fields?.some((f) => shopSet.has(f as ShopLearnField))
+  );
+
+  return { global, shopProduct };
 }

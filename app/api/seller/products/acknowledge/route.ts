@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { acknowledgeProductReview, formatDbError } from "@/lib/products";
+import { acknowledgeProductReviews, formatDbError } from "@/lib/products";
 import { requireSellerShop } from "@/lib/seller";
 
 export async function POST(request: Request) {
@@ -9,13 +9,29 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { productId } = (await request.json()) as { productId?: string };
-    if (!productId?.trim()) {
+    const body = (await request.json()) as {
+      productId?: string;
+      productIds?: string[];
+      all?: boolean;
+    };
+
+    if (body.all) {
+      const count = await acknowledgeProductReviews(shop.id);
+      return NextResponse.json({ success: true, count });
+    }
+
+    const ids = body.productIds?.length
+      ? body.productIds
+      : body.productId?.trim()
+        ? [body.productId.trim()]
+        : [];
+
+    if (ids.length === 0) {
       return NextResponse.json({ error: "상품 ID가 필요합니다." }, { status: 400 });
     }
 
-    await acknowledgeProductReview(shop.id, productId);
-    return NextResponse.json({ success: true });
+    const count = await acknowledgeProductReviews(shop.id, ids);
+    return NextResponse.json({ success: true, count });
   } catch (e) {
     const err = e as { message?: string; code?: string };
     return NextResponse.json({ error: formatDbError(err) }, { status: 500 });

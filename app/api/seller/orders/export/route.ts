@@ -17,10 +17,19 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { orderIds } = (await request.json()) as { orderIds?: string[] };
+    const { orderIds, exportOrderDate } = (await request.json()) as {
+      orderIds?: string[];
+      exportOrderDate?: string;
+    };
     if (!orderIds?.length) {
       return NextResponse.json(
         { error: "보낼 발주를 선택해 주세요." },
+        { status: 400 }
+      );
+    }
+    if (!exportOrderDate?.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(exportOrderDate)) {
+      return NextResponse.json(
+        { error: "발주일(YYYY-MM-DD)을 입력해 주세요." },
         { status: 400 }
       );
     }
@@ -43,10 +52,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const buffer = buildOrderXlsxBuffer(shop.name, orders);
+    const buffer = buildOrderXlsxBuffer(
+      shop.name,
+      orders,
+      exportOrderDate.slice(0, 10)
+    );
     await markOrdersExported(shop.id, orders.map((o) => o.id));
 
-    const filename = orderExportFilename(shop.name);
+    const filename = orderExportFilename(shop.name, exportOrderDate);
     const encoded = encodeURIComponent(filename);
 
     return new NextResponse(new Uint8Array(buffer), {

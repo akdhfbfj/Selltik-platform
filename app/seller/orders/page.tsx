@@ -6,6 +6,7 @@ import KakaoPostcodePicker, {
   type PostcodePickResult,
 } from "@/components/KakaoPostcodePicker";
 import OrderDateCalendar from "@/components/OrderDateCalendar";
+import SegmentedDateInput from "@/components/SegmentedDateInput";
 import OrderEditForm, {
   type OrderEditState,
 } from "@/components/OrderEditForm";
@@ -110,10 +111,13 @@ export default function SellerOrdersPage() {
     new Set()
   );
   const [exporting, setExporting] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportOrderDate, setExportOrderDate] = useState("");
   const [statusTab, setStatusTab] = useState<OrderListTab>("all");
   const [dateFilter, setDateFilter] = useState("");
   const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
   const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
+  const [bulkActioning, setBulkActioning] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [updatingOrder, setUpdatingOrder] = useState(false);
@@ -485,10 +489,20 @@ export default function SellerOrdersPage() {
     [selectedOrders]
   );
 
+  const selectedDraftOrders = useMemo(
+    () => selectedOrders.filter((o) => o.status === "draft"),
+    [selectedOrders]
+  );
+
   const exportCelticTotal = useMemo(
     () => sumCelticDeposit(exportableSelected),
     [exportableSelected]
   );
+
+  const defaultExportOrderDate = useMemo(() => {
+    const dates = exportableSelected.map((o) => o.orderDate).sort();
+    return dates.at(-1) ?? todayIso();
+  }, [exportableSelected]);
 
   const toggleOrderSelect = (id: string) => {
     setSelectedOrderIds((prev) => {
@@ -551,11 +565,78 @@ export default function SellerOrdersPage() {
     setMarkingPaidId(null);
   };
 
+  const handleBulkMarkPaid = async () => {
+    if (selectedDraftOrders.length === 0) return;
+    setBulkActioning(true);
+    setError("");
+    setSuccess("");
+
+    const res = await fetch("/api/seller/orders/bulk-status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        orderIds: selectedDraftOrders.map((o) => o.id),
+        status: "paid",
+      }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data.error || "일괄 입금확인에 실패했습니다.");
+    } else {
+      setSuccess(
+        `${data.count ?? selectedDraftOrders.length}건 입금확인 처리되었습니다.`
+      );
+      loadData();
+    }
+    setBulkActioning(false);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedOrders.length === 0) return;
+    if (
+      !confirm(`선택한 ${selectedOrders.length}건 발주를 삭제할까요?`)
+    ) {
+      return;
+    }
+    setBulkActioning(true);
+    setError("");
+    setSuccess("");
+
+    let deleted = 0;
+    for (const o of selectedOrders) {
+      const res = await fetch(`/api/seller/orders/${o.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) deleted++;
+    }
+
+    if (deleted < selectedOrders.length) {
+      setError(
+        `${selectedOrders.length - deleted}건 삭제에 실패했습니다.`
+      );
+    } else {
+      setSuccess(`${deleted}건 발주가 삭제되었습니다.`);
+      setSelectedOrderIds(new Set());
+      if (editingOrder && selectedOrders.some((o) => o.id === editingOrder.id)) {
+        setEditingOrder(null);
+      }
+      loadData();
+    }
+    setBulkActioning(false);
+  };
+
   const orderHasDuplicate = (o: Order) =>
     findDuplicateOrders(orders, o, o.id).length > 0;
 
+  const openExportModal = () => {
+    if (exportableSelected.length === 0) return;
+    setExportOrderDate(defaultExportOrderDate);
+    setShowExportModal(true);
+  };
+
   const handleExportXlsx = async () => {
-    if (selectedOrderIds.size === 0) return;
+    if (selectedOrderIds.size === 0 || !exportOrderDate) return;
     setExporting(true);
     setError("");
     setSuccess("");
@@ -563,7 +644,10 @@ export default function SellerOrdersPage() {
     const res = await fetch("/api/seller/orders/export", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderIds: [...selectedOrderIds] }),
+      body: JSON.stringify({
+        orderIds: [...selectedOrderIds],
+        exportOrderDate,
+      }),
     });
 
     if (!res.ok) {
@@ -583,8 +667,9 @@ export default function SellerOrdersPage() {
       a.click();
       URL.revokeObjectURL(url);
       setSuccess(
-        `${selectedOrderIds.size}건 발주서를 내려받았습니다. 상태가「다운로드 완료」로 바뀝니다.`
+        `${selectedOrderIds.size}건 발주서를 내려받았습니다. (${exportOrderDate.replace(/-/g, ".")} 발주) 상태가「다운로드 완료」로 바뀝니다.`
       );
+      setShowExportModal(false);
       loadData();
     }
     setExporting(false);
@@ -1010,6 +1095,55 @@ export default function SellerOrdersPage() {
           </form>
         )}
 
+        {showExportModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+              <h3 className="text-lg font-bold text-slate-900">발주서 다운로드</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                선택 {exportableSelected.length}건 · 셀틱 입금액{" "}
+                <span className="font-semibold text-emerald-700">
+                  {formatKrw(exportCelticTotal)}
+                </span>
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                아래 발주일이 xlsx A열·파일명에 들어갑니다.
+              </p>
+              <div className="mt-4">
+                <label className="mb-2 block text-xs font-medium text-slate-600">
+                  발주일
+                </label>
+                <SegmentedDateInput
+                  value={exportOrderDate}
+                  onChange={setExportOrderDate}
+                />
+              </div>
+              <div className="mt-5 flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportXlsx}
+                  disabled={exporting || !exportOrderDate}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {exporting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  다운로드
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowExportModal(false)}
+                  disabled={exporting}
+                  className="rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div
           id="export"
           className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
@@ -1024,7 +1158,7 @@ export default function SellerOrdersPage() {
             {orders.length > 0 && (
               <button
                 type="button"
-                onClick={handleExportXlsx}
+                onClick={openExportModal}
                 disabled={
                   exporting ||
                   exportableSelected.length === 0 ||
@@ -1032,11 +1166,7 @@ export default function SellerOrdersPage() {
                 }
                 className="flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                {exporting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
+                <Download className="h-4 w-4" />
                 xlsx 다운로드 ({exportableSelected.length}건)
               </button>
             )}
@@ -1099,15 +1229,55 @@ export default function SellerOrdersPage() {
             </div>
           )}
 
+          {selectedOrderIds.size > 0 && (
+            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <span className="text-sm font-medium text-slate-700">
+                {selectedOrderIds.size}건 선택
+              </span>
+              {selectedDraftOrders.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleBulkMarkPaid}
+                  disabled={bulkActioning}
+                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  {bulkActioning ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Banknote className="h-3.5 w-3.5" />
+                  )}
+                  입금확인 ({selectedDraftOrders.length})
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={bulkActioning}
+                className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                삭제
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedOrderIds(new Set())}
+                className="ml-auto text-xs text-slate-500 hover:text-slate-700"
+              >
+                선택 해제
+              </button>
+            </div>
+          )}
+
           {exportableSelected.length > 0 && (
             <p className="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
-              선택 {exportableSelected.length}건 · 셀틱 입금액 합계:{" "}
+              xlsx 대상 {exportableSelected.length}건 · 셀틱 입금액 합계:{" "}
               <span className="font-semibold">{formatKrw(exportCelticTotal)}</span>
             </p>
           )}
           {selectedOrders.some((o) => o.status === "draft") && (
             <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              입금 대기 건은 xlsx에 포함할 수 없습니다. 먼저 입금확인을 해 주세요.
+              입금 대기 건은 xlsx에 포함할 수 없습니다. 선택 후 일괄 입금확인을
+              사용할 수 있습니다.
             </p>
           )}
 

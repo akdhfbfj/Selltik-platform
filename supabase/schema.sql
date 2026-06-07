@@ -53,6 +53,8 @@ create table if not exists seller_product_reviews (
   needs_review boolean not null default true,
   flagged_at timestamptz not null default now(),
   acknowledged_at timestamptz,
+  review_reason text not null default 'price_change',
+  change_detail jsonb,
   unique (shop_id, product_id)
 );
 

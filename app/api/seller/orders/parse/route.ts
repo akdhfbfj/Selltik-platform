@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildOrderDraftBundle, formatOrderDbError } from "@/lib/orders";
-import { parseOrderSms } from "@/lib/parse-order-sms";
+import { parseOrderSmsWithLearning } from "@/lib/sms-parse-learn";
 import { requireSellerShop } from "@/lib/seller";
 
 export async function POST(request: Request) {
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const parsed = parseOrderSms(text);
+    const parsed = await parseOrderSmsWithLearning(text, shop.id);
     const draftBundle = await buildOrderDraftBundle(shop.id, parsed, text);
     return NextResponse.json({ parsed, draftBundle });
   } catch (e) {

@@ -117,7 +117,7 @@ const LABEL_PATTERNS: { key: keyof ParsedOrderSms; patterns: RegExp[] }[] = [
   },
 ];
 
-function emptyResult(): ParsedOrderSms {
+export function emptyResult(): ParsedOrderSms {
   return {
     productName: "",
     quantity: 1,

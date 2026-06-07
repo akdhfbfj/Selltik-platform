@@ -3,14 +3,20 @@ import type { Order } from "./types";
 import { orderPersonKey } from "./order-duplicates";
 
 const COLS = 13;
+const TOTAL_COL = 13; // N열
 const DATA_START_ROW = 3;
 const MIN_DATA_ROWS = 30;
 
-const GROUP_STYLES = [
-  { orderer: "B8D4E8", recipient: "F5C6D6", bundle: "FFF59D" },
-  { orderer: "C8E6C9", recipient: "E1BEE7", bundle: "A5D6A7" },
-  { orderer: "FFE0B2", recipient: "FFCCBC", bundle: "FFECB3" },
-  { orderer: "B3E5FC", recipient: "F8BBD0", bundle: "DCEDC8" },
+/** 동일 주문자·수령인·연락처1 묶음 — A~M 행 전체 파스텔 */
+const GROUP_ROW_COLORS = [
+  "E3F2FD",
+  "F3E5F5",
+  "E8F5E9",
+  "FFF8E1",
+  "FCE4EC",
+  "E0F7FA",
+  "F1F8E9",
+  "EDE7F6",
 ] as const;
 
 type CellValue = string | number;
@@ -51,7 +57,7 @@ function styledCell(
   };
 }
 
-/** yy-mm-dd (실무 양식) */
+/** yy-mm-dd (실무 양식) — 타임존 영향 없이 ISO 문자열만 사용 */
 export function formatOrderDateShort(isoDate: string): string {
   const [y, m, d] = isoDate.slice(0, 10).split("-");
   return `${y.slice(2)}-${m}-${d}`;
@@ -71,6 +77,10 @@ export function sumCelticDeposit(orders: Order[]): number {
   );
 }
 
+export function sumSupplyTotal(orders: Order[]): number {
+  return orders.reduce((sum, o) => sum + o.supplyTotal, 0);
+}
+
 function emptyRowValues(): CellValue[] {
   return Array.from({ length: COLS }, (_, i) => (i === 12 ? 0 : ""));
 }
@@ -84,7 +94,7 @@ function buildGroupMeta(orders: Order[]) {
     const key = orderPersonKey(o);
     groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
     if (!groupStyleIndex.has(key)) {
-      groupStyleIndex.set(key, styleCursor % GROUP_STYLES.length);
+      groupStyleIndex.set(key, styleCursor % GROUP_ROW_COLORS.length);
       styleCursor++;
     }
   }
@@ -92,7 +102,11 @@ function buildGroupMeta(orders: Order[]) {
   return { groupCounts, groupStyleIndex };
 }
 
-function orderRowValues(o: Order, bundled: boolean): CellValue[] {
+function orderRowValues(
+  o: Order,
+  exportOrderDate: string,
+  bundled: boolean
+): CellValue[] {
   const memo =
     bundled && !o.shippingMemo.trim()
       ? "묶음배송"
@@ -101,7 +115,7 @@ function orderRowValues(o: Order, bundled: boolean): CellValue[] {
         : o.shippingMemo;
 
   return [
-    formatOrderDateShort(o.orderDate),
+    formatOrderDateShort(exportOrderDate),
     o.productName,
     o.quantity,
     o.ordererName,
@@ -119,7 +133,8 @@ function orderRowValues(o: Order, bundled: boolean): CellValue[] {
 
 export function buildOrderSheetRows(
   shopName: string,
-  orders: Order[]
+  orders: Order[],
+  exportOrderDate: string
 ): CellValue[][] {
   const { groupCounts } = buildGroupMeta(orders);
 
@@ -145,7 +160,7 @@ export function buildOrderSheetRows(
 
   for (const o of orders) {
     const bundled = (groupCounts.get(orderPersonKey(o)) ?? 0) > 1;
-    rows.push(orderRowValues(o, bundled));
+    rows.push(orderRowValues(o, exportOrderDate, bundled));
   }
 
   const padCount = Math.max(0, MIN_DATA_ROWS - orders.length);
@@ -158,9 +173,10 @@ export function buildOrderSheetRows(
 
 export function buildOrderWorkbook(
   shopName: string,
-  orders: Order[]
+  orders: Order[],
+  exportOrderDate: string
 ): XLSX.WorkBook {
-  const rows = buildOrderSheetRows(shopName, orders);
+  const rows = buildOrderSheetRows(shopName, orders, exportOrderDate);
   const { groupCounts, groupStyleIndex } = buildGroupMeta(orders);
   const ws: XLSX.WorkSheet = {};
 
@@ -172,21 +188,25 @@ export function buildOrderWorkbook(
     ws[cellRef(2, c)] = styledCell(h as string, { bold: true, align: "center" });
   });
 
+  const mColumnTotal = sumSupplyTotal(orders);
+  ws[cellRef(3, TOTAL_COL)] = styledCell(mColumnTotal, {
+    bold: true,
+    align: "right",
+    numFmt: "#,##0",
+  });
+
   for (let i = 0; i < orders.length; i++) {
     const o = orders[i];
     const key = orderPersonKey(o);
-    const style = GROUP_STYLES[groupStyleIndex.get(key) ?? 0];
     const bundled = (groupCounts.get(key) ?? 0) > 1;
-    const values = orderRowValues(o, bundled);
+    const rowFill = bundled
+      ? GROUP_ROW_COLORS[groupStyleIndex.get(key) ?? 0]
+      : undefined;
+    const values = orderRowValues(o, exportOrderDate, bundled);
 
     values.forEach((val, c) => {
-      let fill: string | undefined;
-      if (c === 3) fill = style.orderer;
-      if (c === 4) fill = style.recipient;
-      if (c === 9 && bundled) fill = style.bundle;
-
       ws[cellRef(DATA_START_ROW + i, c)] = styledCell(val, {
-        fill,
+        fill: rowFill,
         numFmt: c === 10 || c === 11 || c === 12 ? "#,##0" : undefined,
         align: c === 2 || c >= 10 ? "right" : "left",
       });
@@ -217,10 +237,11 @@ export function buildOrderWorkbook(
     { wch: 10 },
     { wch: 8 },
     { wch: 10 },
+    { wch: 12 },
   ];
   ws["!ref"] = XLSX.utils.encode_range({
     s: { r: 0, c: 0 },
-    e: { r: DATA_START_ROW + MIN_DATA_ROWS - 1, c: COLS - 1 },
+    e: { r: DATA_START_ROW + MIN_DATA_ROWS - 1, c: TOTAL_COL },
   });
 
   const wb = XLSX.utils.book_new();
@@ -230,18 +251,21 @@ export function buildOrderWorkbook(
 
 export function buildOrderXlsxBuffer(
   shopName: string,
-  orders: Order[]
+  orders: Order[],
+  exportOrderDate: string
 ): Buffer {
-  const wb = buildOrderWorkbook(shopName, orders);
+  const wb = buildOrderWorkbook(shopName, orders, exportOrderDate);
   return Buffer.from(
     XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as ArrayBuffer
   );
 }
 
-export function orderExportFilename(shopName: string, date = new Date()): string {
-  const y = date.getFullYear() % 100;
-  const m = date.getMonth() + 1;
-  const d = date.getDate();
+/** 파일명 — ISO 날짜 문자열 기준 (타임존 오류 방지) */
+export function orderExportFilename(
+  shopName: string,
+  orderDateIso: string
+): string {
+  const [y, m, d] = orderDateIso.slice(0, 10).split("-");
   const safe = shopName.replace(/[\\/:*?"<>|]/g, "_").trim() || "셀러";
-  return `[발주] ${y}.${m}.${d}. 발주서(${safe}).xlsx`;
+  return `[발주] ${Number(y) % 100}.${Number(m)}.${Number(d)}. 발주서(${safe}).xlsx`;
 }

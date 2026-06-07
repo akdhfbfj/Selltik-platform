@@ -3,7 +3,9 @@ import { describe, it } from "node:test";
 import {
   buildOrderSheetRows,
   formatOrderDateShort,
+  orderExportFilename,
   sumCelticDeposit,
+  sumSupplyTotal,
   toExcelDate,
 } from "../lib/export-order-xlsx";
 import type { Order } from "../lib/types";
@@ -36,8 +38,10 @@ const sampleOrder = (overrides: Partial<Order> = {}): Order => ({
 });
 
 describe("export-order-xlsx", () => {
+  const exportDate = "2026-06-08";
+
   it("13열 양식: A1 발주서, A2 쇼핑몰명", () => {
-    const rows = buildOrderSheetRows("광고몰", [sampleOrder()]);
+    const rows = buildOrderSheetRows("광고몰", [sampleOrder()], exportDate);
     assert.equal(rows[0][0], "발주서");
     assert.equal(rows[1].length, 13);
     assert.equal(rows[1][0], "광고몰");
@@ -47,11 +51,15 @@ describe("export-order-xlsx", () => {
   });
 
   it("발주일자 yy-mm-dd, 묶음배송 메모", () => {
-    const rows = buildOrderSheetRows("광고몰", [
-      sampleOrder({ id: "a", productName: "상품1" }),
-      sampleOrder({ id: "b", productName: "상품2" }),
-    ]);
-    assert.equal(rows[3][0], "26-06-05");
+    const rows = buildOrderSheetRows(
+      "광고몰",
+      [
+        sampleOrder({ id: "a", productName: "상품1" }),
+        sampleOrder({ id: "b", productName: "상품2" }),
+      ],
+      exportDate
+    );
+    assert.equal(rows[3][0], "26-06-08");
     assert.equal(rows[3][9], "묶음배송");
     assert.equal(rows[4][9], "묶음배송");
   });
@@ -72,5 +80,22 @@ describe("export-order-xlsx", () => {
 
   it("toExcelDate", () => {
     assert.equal(toExcelDate("2026-06-05"), 46178);
+  });
+
+  it("orderExportFilename uses ISO date without timezone drift", () => {
+    assert.match(
+      orderExportFilename("신밧드", "2026-06-08"),
+      /\[발주\] 26\.6\.8\. 발주서\(신밧드\)/
+    );
+  });
+
+  it("sumSupplyTotal", () => {
+    assert.equal(
+      sumSupplyTotal([
+        sampleOrder({ supplyTotal: 100000 }),
+        sampleOrder({ supplyTotal: 50000 }),
+      ]),
+      150000
+    );
   });
 });
