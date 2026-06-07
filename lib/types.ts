@@ -235,6 +235,8 @@ export interface Order {
 
 export interface OrderInput {
   productId?: string | null;
+  /** 발주일 (yyyy-mm-dd) */
+  orderDate?: string;
   productName: string;
   quantity: number;
   ordererName: string;
@@ -265,8 +267,17 @@ export interface OrderDraftPreview extends OrderInput {
 }
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
-  draft: "초안",
+  draft: "입금 대기",
   confirmed: "확정",
-  exported: "출력됨",
+  exported: "전송됨",
   paid: "입금확인",
 };
+
+export type OrderListTab = "draft" | "paid" | "exported" | "all";
+
+export const ORDER_LIST_TABS: { id: OrderListTab; label: string }[] = [
+  { id: "draft", label: "입금 대기" },
+  { id: "paid", label: "발주 준비" },
+  { id: "exported", label: "전송 완료" },
+  { id: "all", label: "전체" },
+];

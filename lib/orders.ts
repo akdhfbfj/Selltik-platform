@@ -39,6 +39,10 @@ function normalizeName(s: string): string {
   return s.replace(/\s/g, "").toLowerCase();
 }
 
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function matchProductBySmsName(
   productName: string,
   products: SellerProductView[]
@@ -98,6 +102,7 @@ export async function buildOrderDraft(
   );
 
   return {
+    orderDate: todayIso(),
     productId: product?.id ?? null,
     productName: product?.officialName ?? parsed.productName,
     quantity: parsed.quantity,
@@ -133,7 +138,7 @@ function toDbRow(
   return {
     shop_id: shopId,
     product_id: input.productId ?? null,
-    order_date: new Date().toISOString().slice(0, 10),
+    order_date: input.orderDate?.slice(0, 10) || todayIso(),
     product_name: input.productName.trim(),
     quantity: input.quantity,
     orderer_name: input.ordererName.trim(),
@@ -168,6 +173,7 @@ export async function getOrdersByShop(shopId: string): Promise<Order[]> {
     .from("orders")
     .select("*")
     .eq("shop_id", shopId)
+    .order("order_date", { ascending: false })
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data ?? []).map(rowToOrder);
@@ -236,6 +242,7 @@ export async function getOrdersByIds(
     .select("*")
     .eq("shop_id", shopId)
     .in("id", ids)
+    .order("order_date", { ascending: true })
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data ?? []).map(rowToOrder);
@@ -254,6 +261,24 @@ export async function markOrdersExported(
     .eq("shop_id", shopId)
     .in("id", ids);
   if (error) throw error;
+}
+
+export async function patchOrderStatus(
+  shopId: string,
+  id: string,
+  status: Order["status"]
+): Promise<Order | null> {
+  const supabase = createServerClient();
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("orders")
+    .update({ status, updated_at: now })
+    .eq("id", id)
+    .eq("shop_id", shopId)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return data ? rowToOrder(data) : null;
 }
 
 export async function deleteOrder(

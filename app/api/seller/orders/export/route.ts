@@ -33,6 +33,16 @@ export async function POST(request: Request) {
       );
     }
 
+    const unpaid = orders.filter((o) => o.status === "draft");
+    if (unpaid.length > 0) {
+      return NextResponse.json(
+        {
+          error: `입금 확인 전 발주 ${unpaid.length}건이 포함되어 있습니다. 입금확인 후 출력해 주세요.`,
+        },
+        { status: 400 }
+      );
+    }
+
     const buffer = buildOrderXlsxBuffer(shop.name, orders);
     await markOrdersExported(shop.id, orders.map((o) => o.id));
 

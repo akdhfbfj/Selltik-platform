@@ -9,6 +9,7 @@ import Script from "next/script";
 import ProductSearchInput from "@/components/ProductSearchInput";
 import { extractTextFromImage } from "@/lib/extract-image-text";
 import { sumCelticDeposit } from "@/lib/export-order-xlsx";
+import { findDuplicateOrders } from "@/lib/order-duplicates";
 import {
   calcOrderPricing,
   recalcDraftPricing,
@@ -16,12 +17,20 @@ import {
 import { formatKrw } from "@/lib/parse-supply-csv";
 import { REMOTE_SHIPPING_SURCHARGE } from "@/lib/remote-area";
 import { SELLER_INPUT_CLASS } from "@/lib/seller-ui";
-import type { Order, OrderDraftPreview, SellerProductView } from "@/lib/types";
-import { ORDER_STATUS_LABELS } from "@/lib/types";
+import type {
+  Order,
+  OrderDraftPreview,
+  OrderListTab,
+  SellerProductView,
+} from "@/lib/types";
+import { ORDER_LIST_TABS, ORDER_STATUS_LABELS } from "@/lib/types";
 import {
   AlertTriangle,
   ArrowRight,
+  Banknote,
   Check,
+  ChevronDown,
+  ChevronRight,
   ClipboardPaste,
   Download,
   ImageIcon,
@@ -30,6 +39,22 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatOrderDateLabel(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${y}년 ${Number(m)}월 ${Number(d)}일`;
+}
+
+const STATUS_BADGE: Record<Order["status"], string> = {
+  draft: "bg-amber-100 text-amber-800",
+  paid: "bg-emerald-100 text-emerald-800",
+  exported: "bg-slate-100 text-slate-600",
+  confirmed: "bg-blue-100 text-blue-800",
+};
 
 export default function SellerOrdersPage() {
   const [smsText, setSmsText] = useState("");
@@ -47,6 +72,10 @@ export default function SellerOrdersPage() {
     new Set()
   );
   const [exporting, setExporting] = useState(false);
+  const [statusTab, setStatusTab] = useState<OrderListTab>("paid");
+  const [dateFilter, setDateFilter] = useState("");
+  const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
+  const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const draftPricing = useMemo(() => {
@@ -91,9 +120,60 @@ export default function SellerOrdersPage() {
 
   useEffect(() => {
     setSelectedOrderIds(
-      new Set(orders.filter((o) => o.status === "draft").map((o) => o.id))
+      new Set(orders.filter((o) => o.status === "paid").map((o) => o.id))
     );
   }, [orders]);
+
+  const availableDates = useMemo(() => {
+    const dates = [...new Set(orders.map((o) => o.orderDate))];
+    return dates.sort((a, b) => b.localeCompare(a));
+  }, [orders]);
+
+  const filteredOrders = useMemo(() => {
+    let list = orders;
+    if (statusTab !== "all") {
+      list = list.filter((o) => o.status === statusTab);
+    }
+    if (dateFilter) {
+      list = list.filter((o) => o.orderDate === dateFilter);
+    }
+    return list;
+  }, [orders, statusTab, dateFilter]);
+
+  const groupedByDate = useMemo(() => {
+    const map = new Map<string, Order[]>();
+    for (const o of filteredOrders) {
+      const arr = map.get(o.orderDate) ?? [];
+      arr.push(o);
+      map.set(o.orderDate, arr);
+    }
+    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [filteredOrders]);
+
+  const tabCounts = useMemo(() => {
+    const counts: Record<OrderListTab, number> = {
+      draft: 0,
+      paid: 0,
+      exported: 0,
+      all: orders.length,
+    };
+    for (const o of orders) {
+      if (o.status === "draft") counts.draft++;
+      if (o.status === "paid") counts.paid++;
+      if (o.status === "exported") counts.exported++;
+    }
+    return counts;
+  }, [orders]);
+
+  const draftDuplicates = useMemo(() => {
+    if (!draft) return [];
+    return findDuplicateOrders(orders, {
+      orderDate: draft.orderDate ?? todayIso(),
+      ordererName: draft.ordererName,
+      recipientName: draft.recipientName,
+      contactPhone: draft.contactPhone,
+    });
+  }, [draft, orders]);
 
   const appendSmsText = (text: string) => {
     const trimmed = text.trim();
@@ -233,9 +313,14 @@ export default function SellerOrdersPage() {
     [orders, selectedOrderIds]
   );
 
-  const exportCelticTotal = useMemo(
-    () => sumCelticDeposit(selectedOrders),
+  const exportableSelected = useMemo(
+    () => selectedOrders.filter((o) => o.status !== "draft"),
     [selectedOrders]
+  );
+
+  const exportCelticTotal = useMemo(
+    () => sumCelticDeposit(exportableSelected),
+    [exportableSelected]
   );
 
   const toggleOrderSelect = (id: string) => {
@@ -248,12 +333,59 @@ export default function SellerOrdersPage() {
   };
 
   const toggleAllOrders = () => {
-    if (selectedOrderIds.size === orders.length) {
-      setSelectedOrderIds(new Set());
-    } else {
-      setSelectedOrderIds(new Set(orders.map((o) => o.id)));
-    }
+    const ids = filteredOrders.map((o) => o.id);
+    const allSelected = ids.every((id) => selectedOrderIds.has(id));
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        ids.forEach((id) => next.delete(id));
+      } else {
+        ids.forEach((id) => next.add(id));
+      }
+      return next;
+    });
   };
+
+  const toggleDateGroup = (date: string) => {
+    setCollapsedDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  };
+
+  const selectDateGroup = (dateOrders: Order[]) => {
+    const ids = dateOrders.map((o) => o.id);
+    const allSelected = ids.every((id) => selectedOrderIds.has(id));
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
+  const handleMarkPaid = async (id: string) => {
+    setMarkingPaidId(id);
+    setError("");
+    const res = await fetch(`/api/seller/orders/${id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "paid" }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error || "입금확인 처리에 실패했습니다.");
+    } else {
+      setSuccess("입금확인 처리되었습니다. 발주 준비 탭에서 xlsx를 출력하세요.");
+      loadData();
+    }
+    setMarkingPaidId(null);
+  };
+
+  const orderHasDuplicate = (o: Order) =>
+    findDuplicateOrders(orders, o, o.id).length > 0;
 
   const handleExportXlsx = async () => {
     if (selectedOrderIds.size === 0) return;
@@ -301,7 +433,7 @@ export default function SellerOrdersPage() {
               ② 답장 · 발주
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              고객 답장 분석 → 발주 저장 → xlsx 출력
+              고객 답장 분석 → 저장 → 입금확인 → xlsx 출력
             </p>
           </div>
           <Link
@@ -411,7 +543,29 @@ export default function SellerOrdersPage() {
               </p>
             )}
 
+            {draftDuplicates.length > 0 && (
+              <div className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  같은 발주일·주문자·수령인·연락처 발주가{" "}
+                  <span className="font-semibold">{draftDuplicates.length}건</span>{" "}
+                  이미 있습니다. 중복 저장이 아닌지 확인해 주세요.
+                </div>
+              </div>
+            )}
+
             <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">
+                  발주일자
+                </label>
+                <input
+                  type="date"
+                  className={SELLER_INPUT_CLASS}
+                  value={draft.orderDate ?? todayIso()}
+                  onChange={(e) => updateDraft({ orderDate: e.target.value })}
+                />
+              </div>
               <div className="sm:col-span-2">
                 <label className="mb-1 block text-xs font-medium text-slate-600">
                   상품 선택
@@ -641,18 +795,20 @@ export default function SellerOrdersPage() {
         >
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="font-semibold text-slate-900">
-                저장된 발주 · xlsx 출력 ({orders.length}건)
-              </h3>
+              <h3 className="font-semibold text-slate-900">저장된 발주</h3>
               <p className="mt-1 text-xs text-slate-500">
-                선택한 발주를 셀틱 양식으로 내려받습니다.
+                입금확인 후 선택하여 셀틱 발주서(xlsx)를 내려받습니다.
               </p>
             </div>
             {orders.length > 0 && (
               <button
                 type="button"
                 onClick={handleExportXlsx}
-                disabled={exporting || selectedOrderIds.size === 0}
+                disabled={
+                  exporting ||
+                  exportableSelected.length === 0 ||
+                  selectedOrders.some((o) => o.status === "draft")
+                }
                 className="flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 {exporting ? (
@@ -660,82 +816,205 @@ export default function SellerOrdersPage() {
                 ) : (
                   <Download className="h-4 w-4" />
                 )}
-                xlsx 다운로드 ({selectedOrderIds.size}건)
+                xlsx 다운로드 ({exportableSelected.length}건)
               </button>
             )}
           </div>
-          {selectedOrderIds.size > 0 && (
+
+          <div className="mb-4 flex flex-wrap gap-2">
+            {ORDER_LIST_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setStatusTab(tab.id)}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  statusTab === tab.id
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {tab.label} ({tabCounts[tab.id]})
+              </button>
+            ))}
+          </div>
+
+          {availableDates.length > 0 && (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <label className="text-xs font-medium text-slate-500">발주일</label>
+              <select
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+              >
+                <option value="">전체 일자</option>
+                {availableDates.map((d) => (
+                  <option key={d} value={d}>
+                    {formatOrderDateLabel(d)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {exportableSelected.length > 0 && (
             <p className="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
-              셀틱 입금액 합계:{" "}
+              선택 {exportableSelected.length}건 · 셀틱 입금액 합계:{" "}
               <span className="font-semibold">{formatKrw(exportCelticTotal)}</span>
             </p>
           )}
+          {selectedOrders.some((o) => o.status === "draft") && (
+            <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              입금 대기 건은 xlsx에 포함할 수 없습니다. 먼저 입금확인을 해 주세요.
+            </p>
+          )}
+
           {loading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
             </div>
-          ) : orders.length === 0 ? (
+          ) : filteredOrders.length === 0 ? (
             <p className="py-8 text-center text-sm text-slate-400">
-              아직 저장된 발주가 없습니다.
+              {orders.length === 0
+                ? "아직 저장된 발주가 없습니다."
+                : "해당 조건의 발주가 없습니다."}
             </p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <label className="flex cursor-pointer items-center gap-2 px-1 text-xs text-slate-500">
                 <input
                   type="checkbox"
                   className="h-4 w-4 rounded border-slate-300"
                   checked={
-                    orders.length > 0 && selectedOrderIds.size === orders.length
+                    filteredOrders.length > 0 &&
+                    filteredOrders.every((o) => selectedOrderIds.has(o.id))
                   }
                   onChange={toggleAllOrders}
                 />
-                전체 선택
+                현재 목록 전체 선택 ({filteredOrders.length}건)
               </label>
-              {orders.map((o) => (
-                <div
-                  key={o.id}
-                  className={`rounded-xl border p-4 text-sm ${
-                    selectedOrderIds.has(o.id)
-                      ? "border-blue-200 bg-blue-50/30"
-                      : "border-slate-200"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
-                      <input
-                        type="checkbox"
-                        className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
-                        checked={selectedOrderIds.has(o.id)}
-                        onChange={() => toggleOrderSelect(o.id)}
-                      />
-                      <div className="min-w-0">
-                        <p className="font-medium text-slate-900">{o.productName}</p>
-                        <p className="mt-1 text-slate-500">
-                          {o.recipientName} · {o.contactPhone} · 수량 {o.quantity}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-400 line-clamp-1">
-                          {o.address}
-                        </p>
-                      </div>
-                    </label>
-                    <div className="text-right">
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                        {ORDER_STATUS_LABELS[o.status]}
-                      </span>
-                      <p className="mt-1 font-semibold text-emerald-700">
-                        {formatKrw(o.supplyTotal)}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleDelete(o.id)}
-                    className="mt-2 flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
+
+              {groupedByDate.map(([date, dateOrders]) => {
+                const collapsed = collapsedDates.has(date);
+                const dateTotal = dateOrders.reduce(
+                  (sum, o) => sum + (o.celticDepositAmount ?? o.supplyTotal),
+                  0
+                );
+                const dateAllSelected = dateOrders.every((o) =>
+                  selectedOrderIds.has(o.id)
+                );
+
+                return (
+                  <div
+                    key={date}
+                    className="overflow-hidden rounded-xl border border-slate-200"
                   >
-                    <Trash2 className="h-3 w-3" />
-                    삭제
-                  </button>
-                </div>
-              ))}
+                    <div className="flex flex-wrap items-center gap-2 bg-slate-50 px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleDateGroup(date)}
+                        className="flex items-center gap-1 text-sm font-semibold text-slate-800"
+                      >
+                        {collapsed ? (
+                          <ChevronRight className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                        {formatOrderDateLabel(date)}
+                      </button>
+                      <span className="text-xs text-slate-500">
+                        {dateOrders.length}건 · {formatKrw(dateTotal)}
+                      </span>
+                      <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-slate-500">
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 rounded border-slate-300"
+                          checked={dateAllSelected}
+                          onChange={() => selectDateGroup(dateOrders)}
+                        />
+                        이 날짜 전체
+                      </label>
+                    </div>
+
+                    {!collapsed && (
+                      <div className="space-y-2 p-3">
+                        {dateOrders.map((o) => (
+                          <div
+                            key={o.id}
+                            className={`rounded-xl border p-4 text-sm ${
+                              selectedOrderIds.has(o.id)
+                                ? "border-blue-200 bg-blue-50/30"
+                                : "border-slate-200 bg-white"
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
+                                <input
+                                  type="checkbox"
+                                  className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
+                                  checked={selectedOrderIds.has(o.id)}
+                                  onChange={() => toggleOrderSelect(o.id)}
+                                />
+                                <div className="min-w-0">
+                                  <p className="font-medium text-slate-900">
+                                    {o.productName}
+                                  </p>
+                                  <p className="mt-1 text-slate-500">
+                                    {o.ordererName} → {o.recipientName} ·{" "}
+                                    {o.contactPhone} · 수량 {o.quantity}
+                                  </p>
+                                  <p className="mt-1 text-xs text-slate-400 line-clamp-1">
+                                    {o.address}
+                                  </p>
+                                  {orderHasDuplicate(o) && (
+                                    <p className="mt-1 flex items-center gap-1 text-xs text-amber-700">
+                                      <AlertTriangle className="h-3 w-3" />
+                                      같은 날·동일 수신인 중복 가능
+                                    </p>
+                                  )}
+                                </div>
+                              </label>
+                              <div className="text-right">
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[o.status]}`}
+                                >
+                                  {ORDER_STATUS_LABELS[o.status]}
+                                </span>
+                                <p className="mt-1 font-semibold text-emerald-700">
+                                  {formatKrw(o.supplyTotal)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {o.status === "draft" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkPaid(o.id)}
+                                  disabled={markingPaidId === o.id}
+                                  className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                                >
+                                  {markingPaidId === o.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Banknote className="h-3 w-3" />
+                                  )}
+                                  입금확인
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDelete(o.id)}
+                                className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                삭제
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

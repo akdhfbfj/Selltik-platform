@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildOrderSheetRows,
+  formatOrderDateShort,
   sumCelticDeposit,
   toExcelDate,
 } from "../lib/export-order-xlsx";
@@ -34,15 +35,24 @@ const sampleOrder = (overrides: Partial<Order> = {}): Order => ({
 });
 
 describe("export-order-xlsx", () => {
-  it("첫 데이터 행에만 셀틱 입금액 합계", () => {
-    const rows = buildOrderSheetRows("띵동이네", [
-      sampleOrder({ id: "a", supplyTotal: 102000, celticDepositAmount: 102000 }),
-      sampleOrder({ id: "b", supplyTotal: 50000, celticDepositAmount: 50000 }),
+  it("13열 양식: A1 발주서, A2 쇼핑몰명", () => {
+    const rows = buildOrderSheetRows("광고몰", [sampleOrder()]);
+    assert.equal(rows[0][0], "발주서");
+    assert.equal(rows[1].length, 13);
+    assert.equal(rows[1][0], "광고몰");
+    assert.equal(rows[1][12], "(단위:원)");
+    assert.equal(rows[2][12], "계");
+    assert.equal(rows[2].length, 13);
+  });
+
+  it("발주일자 yy-mm-dd, 묶음배송 메모", () => {
+    const rows = buildOrderSheetRows("광고몰", [
+      sampleOrder({ id: "a", productName: "상품1" }),
+      sampleOrder({ id: "b", productName: "상품2" }),
     ]);
-    const firstData = rows[3];
-    const secondData = rows[4];
-    assert.equal(firstData[13], 152000);
-    assert.equal(secondData[13], "");
+    assert.equal(rows[3][0], "26-06-05");
+    assert.equal(rows[3][9], "묶음배송");
+    assert.equal(rows[4][9], "묶음배송");
   });
 
   it("sumCelticDeposit", () => {
@@ -53,6 +63,10 @@ describe("export-order-xlsx", () => {
       ]),
       254000
     );
+  });
+
+  it("formatOrderDateShort", () => {
+    assert.equal(formatOrderDateShort("2026-06-05"), "26-06-05");
   });
 
   it("toExcelDate", () => {
