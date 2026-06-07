@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ProductSearchInput from "@/components/ProductSearchInput";
 import {
   buildOutboundSmsBodyFromCart,
+  calcOutboundRemoteSurcharge,
   composeOutboundSms,
 } from "@/lib/build-outbound-sms";
 import { extractTextFromImage } from "@/lib/extract-image-text";
@@ -81,6 +82,7 @@ export default function SellerOrdersPage() {
   const [smsHeader, setSmsHeader] = useState("");
   const [smsFooter, setSmsFooter] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [outboundRemoteArea, setOutboundRemoteArea] = useState(false);
   const [addProductId, setAddProductId] = useState("");
   const [addQty, setAddQty] = useState(1);
   const [pickerReset, setPickerReset] = useState(0);
@@ -175,10 +177,19 @@ export default function SellerOrdersPage() {
     [cartItems]
   );
 
+  const cartRemoteSurcharge = useMemo(
+    () => calcOutboundRemoteSurcharge(cartItems.length, outboundRemoteArea),
+    [cartItems.length, outboundRemoteArea]
+  );
+
+  const cartGrandTotal = cartSubtotal + cartRemoteSurcharge;
+
   const outboundPreview = useMemo(() => {
-    const body = buildOutboundSmsBodyFromCart(cartItems);
+    const body = buildOutboundSmsBodyFromCart(cartItems, {
+      isRemoteArea: outboundRemoteArea,
+    });
     return composeOutboundSms(smsHeader, body, smsFooter);
-  }, [smsHeader, smsFooter, cartItems]);
+  }, [smsHeader, smsFooter, cartItems, outboundRemoteArea]);
 
   const addToCart = () => {
     if (!addProductId) return;
@@ -209,6 +220,7 @@ export default function SellerOrdersPage() {
 
   const clearCart = () => {
     setCart([]);
+    setOutboundRemoteArea(false);
   };
 
   const handleSaveSmsSettings = async () => {
@@ -510,7 +522,9 @@ export default function SellerOrdersPage() {
                   {cart.length > 0 && (
                     <>
                       <span className="text-sm font-semibold text-blue-700">
-                        합계 {formatKrw(cartSubtotal)}
+                        {outboundRemoteArea
+                          ? `총 ${formatKrw(cartGrandTotal)}`
+                          : `합계 ${formatKrw(cartSubtotal)}`}
                       </span>
                       <button
                         type="button"
@@ -565,6 +579,25 @@ export default function SellerOrdersPage() {
                 </ul>
               )}
             </div>
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                checked={outboundRemoteArea}
+                onChange={(e) => setOutboundRemoteArea(e.target.checked)}
+              />
+              <span>
+                <span className="block text-sm font-medium text-slate-800">
+                  제주·도서산간 (+{formatKrw(REMOTE_SHIPPING_SURCHARGE)}/품목)
+                </span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  체크 시 미리보기·복사 문자에 품목당{" "}
+                  {formatKrw(REMOTE_SHIPPING_SURCHARGE)}이 추가됩니다. 같은
+                  상품 여러 개도 품목 1건, 다른 상품이면 품목마다 추가.
+                </span>
+              </span>
+            </label>
           </div>
 
           <div className="space-y-3 md:sticky md:top-4 md:self-start">
