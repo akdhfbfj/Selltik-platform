@@ -1,5 +1,5 @@
 import { calcShippingFee } from "./remote-area";
-import type { SellerProductView } from "./types";
+import type { OrderDraftPreview, SellerProductView } from "./types";
 
 export type OrderPricingProduct = Pick<
   SellerProductView,
@@ -54,5 +54,29 @@ export function calcOrderPricing(
     isRemoteArea,
     unitSupplyTotal: unitSupply,
     remoteSurcharge,
+  };
+}
+
+export function recalcDraftPricing(
+  draft: OrderDraftPreview,
+  product: SellerProductView | null | undefined,
+  remoteChecked: boolean
+): Pick<
+  OrderDraftPreview,
+  "purchasePrice" | "shippingFee" | "supplyTotal" | "celticDepositAmount" | "isRemoteArea"
+> {
+  const pricing = calcOrderPricing(
+    product,
+    draft.quantity,
+    draft.postalCode,
+    draft.address,
+    remoteChecked
+  );
+  return {
+    purchasePrice: pricing.purchasePrice,
+    shippingFee: pricing.shippingFee,
+    supplyTotal: pricing.supplyTotal,
+    celticDepositAmount: pricing.celticDepositAmount,
+    isRemoteArea: pricing.isRemoteArea,
   };
 }

@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import {
-  ClipboardList,
   LayoutDashboard,
   LogOut,
+  MessageSquare,
   Package,
   Package2,
+  Send,
   Sparkles,
 } from "lucide-react";
 
@@ -63,6 +64,17 @@ export default function SellerNav({ shopName }: Props) {
             상품·공급가
           </Link>
           <Link
+            href="/seller/outbound-sms"
+            className={`hidden items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium sm:flex ${
+              pathname === "/seller/outbound-sms"
+                ? "bg-emerald-50 text-emerald-700"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <Send className="h-4 w-4" />
+            안내 문자
+          </Link>
+          <Link
             href="/seller/orders"
             className={`hidden items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium sm:flex ${
               pathname === "/seller/orders"
@@ -70,8 +82,8 @@ export default function SellerNav({ shopName }: Props) {
                 : "text-slate-600 hover:bg-slate-100"
             }`}
           >
-            <ClipboardList className="h-4 w-4" />
-            문자→발주
+            <MessageSquare className="h-4 w-4" />
+            답장·발주
           </Link>
           <Link
             href="/seller/recommend"
