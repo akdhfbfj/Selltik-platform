@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ProductSearchInput from "@/components/ProductSearchInput";
 import {
-  buildOutboundSmsBody,
+  buildOutboundSmsBodyFromCart,
   composeOutboundSms,
 } from "@/lib/build-outbound-sms";
 import { extractTextFromImage } from "@/lib/extract-image-text";
@@ -24,8 +24,14 @@ import {
   MapPin,
   MessageSquare,
   Plus,
+  ShoppingCart,
   Trash2,
 } from "lucide-react";
+
+interface CartLine {
+  productId: string;
+  quantity: number;
+}
 
 export default function SellerOrdersPage() {
   const [smsText, setSmsText] = useState("");
@@ -43,8 +49,10 @@ export default function SellerOrdersPage() {
   const [success, setSuccess] = useState("");
   const [smsHeader, setSmsHeader] = useState("");
   const [smsFooter, setSmsFooter] = useState("");
-  const [outboundProductId, setOutboundProductId] = useState("");
-  const [outboundQty, setOutboundQty] = useState(1);
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [addProductId, setAddProductId] = useState("");
+  const [addQty, setAddQty] = useState(1);
+  const [pickerReset, setPickerReset] = useState(0);
   const [savingSettings, setSavingSettings] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shopName, setShopName] = useState("");
@@ -115,13 +123,58 @@ export default function SellerOrdersPage() {
     }
   };
 
-  const outboundProduct = products.find((p) => p.id === outboundProductId);
+  const cartItems = useMemo(
+    () =>
+      cart
+        .map((line) => {
+          const product = products.find((p) => p.id === line.productId);
+          if (!product) return null;
+          return { product, quantity: line.quantity };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null),
+    [cart, products]
+  );
+
+  const cartSubtotal = useMemo(
+    () =>
+      cartItems.reduce(
+        (sum, { product, quantity }) => sum + product.consumerPrice * quantity,
+        0
+      ),
+    [cartItems]
+  );
 
   const outboundPreview = useMemo(() => {
-    if (!outboundProduct) return composeOutboundSms(smsHeader, "", smsFooter);
-    const body = buildOutboundSmsBody(outboundProduct, outboundQty);
+    const body = buildOutboundSmsBodyFromCart(cartItems);
     return composeOutboundSms(smsHeader, body, smsFooter);
-  }, [smsHeader, smsFooter, outboundProduct, outboundQty]);
+  }, [smsHeader, smsFooter, cartItems]);
+
+  const addToCart = () => {
+    if (!addProductId) return;
+    setCart((prev) => {
+      const idx = prev.findIndex((l) => l.productId === addProductId);
+      if (idx >= 0) {
+        return prev.map((l, i) =>
+          i === idx ? { ...l, quantity: l.quantity + addQty } : l
+        );
+      }
+      return [...prev, { productId: addProductId, quantity: addQty }];
+    });
+    setAddProductId("");
+    setAddQty(1);
+    setPickerReset((n) => n + 1);
+  };
+
+  const updateCartQty = (productId: string, quantity: number) => {
+    const q = Math.max(1, quantity);
+    setCart((prev) =>
+      prev.map((l) => (l.productId === productId ? { ...l, quantity: q } : l))
+    );
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCart((prev) => prev.filter((l) => l.productId !== productId));
+  };
 
   const handleSaveSmsSettings = async () => {
     setSavingSettings(true);
@@ -299,8 +352,8 @@ export default function SellerOrdersPage() {
           ① 고객에게 보낼 안내 문자
         </h3>
         <p className="mb-4 text-xs text-slate-500">
-          상·하단은 한 번 저장하면 계속 쓰입니다. 본문은 상품 선택 시 금액이
-          자동 계산됩니다.
+          상·하단은 한 번 저장하면 계속 씁니다. 상품을 검색해 장바구니에 담으면
+          본문에 한 줄씩 누적됩니다.
         </p>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -361,18 +414,19 @@ export default function SellerOrdersPage() {
           </div>
 
           <div className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="sm:col-span-2">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[200px] flex-1">
                 <label className="mb-1 block text-xs font-medium text-slate-600">
-                  상품 (본문)
+                  상품 검색 (본문)
                 </label>
                 <ProductSearchInput
                   products={products}
-                  value={outboundProductId}
-                  onChange={setOutboundProductId}
+                  value={addProductId}
+                  onChange={setAddProductId}
+                  resetToken={pickerReset}
                 />
               </div>
-              <div>
+              <div className="w-20">
                 <label className="mb-1 block text-xs font-medium text-slate-600">
                   수량
                 </label>
@@ -380,21 +434,75 @@ export default function SellerOrdersPage() {
                   type="number"
                   min={1}
                   className={`${inputClass} bg-white`}
-                  value={outboundQty}
+                  value={addQty}
                   onChange={(e) =>
-                    setOutboundQty(Math.max(1, parseInt(e.target.value, 10) || 1))
+                    setAddQty(Math.max(1, parseInt(e.target.value, 10) || 1))
                   }
                 />
               </div>
-              {outboundProduct && (
-                <div className="flex items-end text-sm text-slate-600">
-                  <p>
-                    개당 {formatKrw(outboundProduct.consumerPrice)} → 합계{" "}
-                    <span className="font-semibold text-blue-700">
-                      {formatKrw(outboundProduct.consumerPrice * outboundQty)}
-                    </span>
-                  </p>
-                </div>
+              <button
+                type="button"
+                onClick={addToCart}
+                disabled={!addProductId}
+                className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" />
+                담기
+              </button>
+            </div>
+
+            <div className="rounded-xl border-2 border-slate-800 bg-white p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <h4 className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
+                  <ShoppingCart className="h-4 w-4" />
+                  장바구니
+                </h4>
+                {cart.length > 0 && (
+                  <span className="text-sm font-semibold text-blue-700">
+                    합계 {formatKrw(cartSubtotal)}
+                  </span>
+                )}
+              </div>
+              {cart.length === 0 ? (
+                <p className="py-6 text-center text-sm text-slate-400">
+                  상품을 검색해 담기를 눌러주세요
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {cartItems.map(({ product, quantity }) => (
+                    <li
+                      key={product.id}
+                      className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm"
+                    >
+                      <span className="min-w-0 flex-1 font-medium text-slate-900">
+                        {product.smsName || product.officialName}
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        className="w-14 rounded border border-slate-200 px-2 py-1 text-center text-sm"
+                        value={quantity}
+                        onChange={(e) =>
+                          updateCartQty(
+                            product.id,
+                            parseInt(e.target.value, 10) || 1
+                          )
+                        }
+                      />
+                      <span className="w-24 text-right font-medium text-slate-700">
+                        {formatKrw(product.consumerPrice * quantity)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeFromCart(product.id)}
+                        className="text-slate-400 hover:text-red-500"
+                        aria-label="삭제"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
 
@@ -403,13 +511,15 @@ export default function SellerOrdersPage() {
                 미리보기 (복사해서 문자 앱에 붙여넣기)
               </label>
               <pre className="min-h-[160px] whitespace-pre-wrap rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-800">
-                {outboundPreview || "상품을 선택하면 본문이 채워집니다."}
+                {cart.length > 0
+                  ? outboundPreview
+                  : "장바구니에 상품을 담으면 미리보기가 표시됩니다."}
               </pre>
             </div>
             <button
               type="button"
               onClick={handleCopyOutbound}
-              disabled={!outboundProductId}
+              disabled={cart.length === 0}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
             >
               {copied ? (

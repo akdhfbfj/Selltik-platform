@@ -7,26 +7,44 @@ export interface OutboundSmsProduct {
   baseShipping: number;
 }
 
-export function buildOutboundSmsBody(
-  product: OutboundSmsProduct,
-  quantity: number
+export interface OutboundCartLine {
+  product: OutboundSmsProduct;
+  quantity: number;
+}
+
+function displayName(product: OutboundSmsProduct): string {
+  return product.smsName.trim() || product.officialName;
+}
+
+/** 장바구니 → 본문 (1개: 단가만, 2개+: 단가 x 수량 = 합계) */
+export function buildOutboundSmsBodyFromCart(
+  items: OutboundCartLine[]
 ): string {
-  const name = product.smsName.trim() || product.officialName;
-  const unit = product.consumerPrice;
-  const total = unit * quantity;
+  if (items.length === 0) return "";
 
-  const lines = [
-    `▶ ${name}`,
-    `수량: ${quantity}개`,
-    `개당 ${formatKrw(unit)}`,
-    `합계 ${formatKrw(total)}`,
-  ];
+  const lines = items.map(({ product, quantity }) => {
+    const name = displayName(product);
+    const unit = formatKrw(product.consumerPrice);
+    if (quantity === 1) return `· ${name} ${unit}`;
+    const lineTotal = product.consumerPrice * quantity;
+    return `· ${name} ${unit} x ${quantity} = ${formatKrw(lineTotal)}`;
+  });
 
-  if (product.baseShipping > 0) {
-    lines.push(`※ 배송비 ${formatKrw(product.baseShipping)} 별도 (제주·도서산간 +4,000원)`);
+  const subtotal = items.reduce(
+    (sum, { product, quantity }) => sum + product.consumerPrice * quantity,
+    0
+  );
+
+  const maxShipping = Math.max(0, ...items.map((i) => i.product.baseShipping));
+  const hasShipping = maxShipping > 0;
+
+  const parts = [...lines, "", `합계 ${formatKrw(subtotal)}`];
+  if (hasShipping) {
+    parts.push(
+      `※ 배송비 ${formatKrw(maxShipping)} 별도 (제주·도서산간 +4,000원)`
+    );
   }
-
-  return lines.join("\n");
+  return parts.join("\n");
 }
 
 export function composeOutboundSms(

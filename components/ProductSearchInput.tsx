@@ -10,6 +10,8 @@ interface Props {
   value: string;
   onChange: (productId: string) => void;
   placeholder?: string;
+  /** 변경 시 검색창 초기화 (장바구니 담기 후 등) */
+  resetToken?: number;
 }
 
 export default function ProductSearchInput({
@@ -17,12 +19,18 @@ export default function ProductSearchInput({
   value,
   onChange,
   placeholder = "상품명·문자용 이름 검색",
+  resetToken = 0,
 }: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const selected = products.find((p) => p.id === value);
+
+  useEffect(() => {
+    setQuery("");
+    setOpen(false);
+  }, [resetToken]);
 
   useEffect(() => {
     if (selected) {
