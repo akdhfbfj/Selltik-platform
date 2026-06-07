@@ -14,10 +14,8 @@ import {
 } from "@/lib/build-outbound-sms";
 import { extractTextFromImage } from "@/lib/extract-image-text";
 import { formatKrw } from "@/lib/parse-supply-csv";
-import {
-  calcShippingFee,
-  REMOTE_SHIPPING_SURCHARGE,
-} from "@/lib/remote-area";
+import { calcOrderPricing } from "@/lib/order-pricing";
+import { REMOTE_SHIPPING_SURCHARGE } from "@/lib/remote-area";
 import {
   getDefaultSmsFooter,
   getDefaultSmsHeader,
@@ -51,20 +49,19 @@ function recalcDraftPricing(
   OrderDraftPreview,
   "purchasePrice" | "shippingFee" | "supplyTotal" | "celticDepositAmount" | "isRemoteArea"
 > {
-  const purchasePrice = (product?.purchasePrice ?? 0) * draft.quantity;
-  const { shippingFee, isRemoteArea: isRemote } = calcShippingFee(
-    product?.baseShipping ?? 0,
+  const pricing = calcOrderPricing(
+    product,
+    draft.quantity,
     draft.postalCode,
     draft.address,
-    { isRemoteArea: remoteChecked, remoteLineCount: 1 }
+    remoteChecked
   );
-  const supplyTotal = purchasePrice + shippingFee;
   return {
-    purchasePrice,
-    shippingFee,
-    supplyTotal,
-    celticDepositAmount: supplyTotal,
-    isRemoteArea: isRemote,
+    purchasePrice: pricing.purchasePrice,
+    shippingFee: pricing.shippingFee,
+    supplyTotal: pricing.supplyTotal,
+    celticDepositAmount: pricing.celticDepositAmount,
+    isRemoteArea: pricing.isRemoteArea,
   };
 }
 
@@ -91,6 +88,20 @@ export default function SellerOrdersPage() {
   const [shopName, setShopName] = useState("");
   const [ocrLoading, setOcrLoading] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const draftPricing = useMemo(() => {
+    if (!draft) return null;
+    const product = draft.productId
+      ? products.find((p) => p.id === draft.productId)
+      : null;
+    return calcOrderPricing(
+      product,
+      draft.quantity,
+      draft.postalCode,
+      draft.address,
+      draft.isRemoteArea
+    );
+  }, [draft, products]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -851,36 +862,89 @@ export default function SellerOrdersPage() {
             </div>
           </div>
 
-          <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm">
-            <div className="flex justify-between">
-              <span className="text-slate-600">매입가 (수량 반영)</span>
-              <span>{formatKrw(draft.purchasePrice)}</span>
-            </div>
-            <div className="mt-1 flex justify-between">
-              <span className="text-slate-600">
-                택배비
-                {draft.isRemoteArea && (
-                  <span className="ml-1 text-amber-600">
-                    (기본 + 도서산간 {formatKrw(REMOTE_SHIPPING_SURCHARGE)}/품목)
+          {draftPricing && (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 text-sm">
+              <h4 className="mb-3 font-semibold text-slate-900">
+                금액 확인 (저장 전)
+              </h4>
+              <div className="space-y-2 rounded-lg bg-white p-3 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <span className="text-slate-600">고객 입금액</span>
+                    <p className="text-xs text-slate-400">판매가 기준</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-semibold text-slate-900">
+                      {formatKrw(draftPricing.customerDepositAmount)}
+                    </span>
+                    {draft.quantity > 1 &&
+                      draft.productMatch.consumerPrice > 0 && (
+                        <p className="text-xs text-slate-400">
+                          {formatKrw(draft.productMatch.consumerPrice)} ×{" "}
+                          {draft.quantity}
+                        </p>
+                      )}
+                  </div>
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <span className="text-slate-600">셀틱 입금액</span>
+                    <p className="text-xs text-slate-400">공급가표 계(E열)</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-semibold text-emerald-700">
+                      {formatKrw(draftPricing.celticDepositAmount)}
+                    </span>
+                    {draftPricing.unitSupplyTotal > 0 && (
+                      <p className="text-xs text-slate-400">
+                        {formatKrw(draftPricing.unitSupplyTotal)} ×{" "}
+                        {draft.quantity}
+                        {draftPricing.remoteSurcharge > 0 &&
+                          ` + 도서산간 ${formatKrw(draftPricing.remoteSurcharge)}`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-start justify-between gap-4 border-t border-slate-100 pt-2">
+                  <div>
+                    <span className="font-semibold text-slate-800">차액</span>
+                    <p className="text-xs text-slate-400">고객 입금 − 셀틱 입금</p>
+                  </div>
+                  <span
+                    className={`font-bold ${
+                      draftPricing.marginAmount >= 0
+                        ? "text-blue-700"
+                        : "text-red-600"
+                    }`}
+                  >
+                    {formatKrw(draftPricing.marginAmount)}
                   </span>
-                )}
-              </span>
-              <span>{formatKrw(draft.shippingFee)}</span>
+                </div>
+              </div>
+              <details className="mt-2 text-xs text-slate-500">
+                <summary className="cursor-pointer hover:text-slate-700">
+                  상세 내역
+                </summary>
+                <div className="mt-2 space-y-1 rounded-lg bg-white/80 p-2">
+                  <div className="flex justify-between">
+                    <span>매입가</span>
+                    <span>{formatKrw(draftPricing.purchasePrice)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>
+                      택배비
+                      {draft.isRemoteArea && (
+                        <span className="ml-1 text-amber-600">
+                          (도서산간 포함)
+                        </span>
+                      )}
+                    </span>
+                    <span>{formatKrw(draftPricing.shippingFee)}</span>
+                  </div>
+                </div>
+              </details>
             </div>
-            <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 font-semibold text-slate-900">
-              <span>셀틱 입금액 (계)</span>
-              <span className="text-emerald-700">
-                {formatKrw(draft.celticDepositAmount)}
-              </span>
-            </div>
-            {draft.productMatch.consumerPrice > 0 && (
-              <p className="mt-2 text-xs text-slate-500">
-                고객 판매가 안내: {formatKrw(draft.productMatch.consumerPrice)}
-                {draft.quantity > 1 &&
-                  ` × ${draft.quantity} = ${formatKrw(draft.productMatch.consumerPrice * draft.quantity)}`}
-              </p>
-            )}
-          </div>
+          )}
 
           <div className="mt-4 flex gap-2">
             <button

@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type { Order, OrderDraftPreview, OrderInput, SellerProductView } from "./types";
 import type { ParsedOrderSms } from "./parse-order-sms";
-import { calcShippingFee } from "./remote-area";
+import { calcOrderPricing } from "./order-pricing";
 import { getSellerProductViews } from "./products";
 import { saveSmsParseSample } from "./sms-parse-samples";
 import { createServerClient } from "./supabase/server";
@@ -89,17 +89,13 @@ export async function buildOrderDraft(
     products
   );
 
-  const purchasePrice = product
-    ? product.purchasePrice * parsed.quantity
-    : 0;
-  const baseShipping = product?.baseShipping ?? 0;
-  const { shippingFee } = calcShippingFee(
-    baseShipping,
+  const pricing = calcOrderPricing(
+    product,
+    parsed.quantity,
     parsed.postalCode,
     parsed.address,
-    { isRemoteArea: false, remoteLineCount: 1 }
+    false
   );
-  const supplyTotal = purchasePrice + shippingFee;
 
   return {
     productId: product?.id ?? null,
@@ -112,10 +108,10 @@ export async function buildOrderDraft(
     postalCode: parsed.postalCode,
     address: parsed.address,
     shippingMemo: parsed.shippingMemo,
-    purchasePrice,
-    shippingFee,
-    supplyTotal,
-    isRemoteArea: false,
+    purchasePrice: pricing.purchasePrice,
+    shippingFee: pricing.shippingFee,
+    supplyTotal: pricing.supplyTotal,
+    isRemoteArea: pricing.isRemoteArea,
     rawSmsText,
     status: "draft",
     productMatch: {
@@ -124,7 +120,7 @@ export async function buildOrderDraft(
       matchedBy,
       consumerPrice: product?.consumerPrice ?? 0,
     },
-    celticDepositAmount: supplyTotal,
+    celticDepositAmount: pricing.celticDepositAmount,
     autoParsed: { ...parsed },
   };
 }
@@ -247,21 +243,20 @@ export function recalcOrderPricing(
   const product = draft.productId
     ? products.find((p) => p.id === draft.productId)
     : null;
-  const unitPurchase = product?.purchasePrice ?? 0;
-  const purchasePrice = unitPurchase * draft.quantity;
-  const { shippingFee } = calcShippingFee(
-    product?.baseShipping ?? 0,
+  const pricing = calcOrderPricing(
+    product,
+    draft.quantity,
     draft.postalCode,
     draft.address,
-    { isRemoteArea: draft.isRemoteArea, remoteLineCount: 1 }
+    draft.isRemoteArea
   );
-  const supplyTotal = purchasePrice + shippingFee;
   return {
     ...draft,
-    purchasePrice,
-    shippingFee,
-    supplyTotal,
-    celticDepositAmount: supplyTotal,
+    purchasePrice: pricing.purchasePrice,
+    shippingFee: pricing.shippingFee,
+    supplyTotal: pricing.supplyTotal,
+    celticDepositAmount: pricing.celticDepositAmount,
+    isRemoteArea: pricing.isRemoteArea,
     productMatch: {
       productId: product?.id ?? null,
       officialName: product?.officialName ?? null,

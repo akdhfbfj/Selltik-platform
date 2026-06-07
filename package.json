@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "tsx --test tests/parse-order-sms.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "migrate:sqlite": "node scripts/migrate-sqlite.mjs"
   },
   "dependencies": {
