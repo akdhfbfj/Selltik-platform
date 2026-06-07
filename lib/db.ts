@@ -270,6 +270,38 @@ export async function createRecommendation(
   return (await getRecommendationById(id))!;
 }
 
+export async function updateSellerRecommendation(
+  id: string,
+  shopId: string,
+  input: {
+    productName: string;
+    brand?: string;
+    desiredPrice?: string;
+    referenceUrl?: string;
+  }
+): Promise<Recommendation | null> {
+  const existing = await getRecommendationById(id);
+  if (!existing || existing.shopId !== shopId) return null;
+  if (existing.status === "adopted" || existing.status === "rejected") {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const supabase = createServerClient();
+  const { error } = await supabase
+    .from("recommendations")
+    .update({
+      product_name: input.productName.trim(),
+      brand: input.brand?.trim() ?? "",
+      desired_price: input.desiredPrice?.trim() ?? "",
+      reference_url: input.referenceUrl?.trim() ?? "",
+      updated_at: now,
+    })
+    .eq("id", id);
+  if (error) throw error;
+  return getRecommendationById(id);
+}
+
 export async function updateRecommendationStatus(
   id: string,
   status: RecommendationStatus

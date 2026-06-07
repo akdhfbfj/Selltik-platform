@@ -16,7 +16,6 @@ import {
 } from "@/lib/sms-templates";
 import type { SellerProductView } from "@/lib/types";
 import {
-  ArrowRight,
   Check,
   Copy,
   Loader2,
@@ -26,7 +25,6 @@ import {
   ShoppingCart,
   Trash2,
 } from "lucide-react";
-import Link from "next/link";
 
 interface CartLine {
   productId: string;
@@ -181,22 +179,11 @@ export default function SellerOutboundSmsPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900">
-            ① 고객 안내 문자
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            상품을 담고 문자를 복사해 고객에게 보냅니다.
-          </p>
-        </div>
-        <Link
-          href="/seller/orders"
-          className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
-        >
-          ② 답장·발주
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-slate-900">① 고객 안내 문자</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          상품을 담고 문자를 복사해 고객에게 보냅니다.
+        </p>
       </div>
 
       {error && (

@@ -86,7 +86,7 @@ export interface RecommendationInput {
 export const RECOMMENDATION_STATUS_LABELS: Record<RecommendationStatus, string> = {
   new: "신규",
   reviewing: "검토중",
-  adopted: "채택됨",
+  adopted: "업체컨택중",
   rejected: "보류",
 };
 
@@ -282,8 +282,14 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
 export type OrderListTab = "draft" | "paid" | "exported" | "all";
 
 export const ORDER_LIST_TABS: { id: OrderListTab; label: string }[] = [
+  { id: "all", label: "전체" },
   { id: "draft", label: "입금 대기" },
   { id: "paid", label: "발주 준비" },
   { id: "exported", label: "다운로드 완료" },
-  { id: "all", label: "전체" },
 ];
+
+export type OrderDateStatusCounts = {
+  draft: number;
+  paid: number;
+  exported: number;
+};

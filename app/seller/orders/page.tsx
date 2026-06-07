@@ -31,7 +31,6 @@ import type {
 import { ORDER_LIST_TABS, ORDER_STATUS_LABELS } from "@/lib/types";
 import {
   AlertTriangle,
-  ArrowRight,
   Banknote,
   Check,
   ChevronDown,
@@ -45,7 +44,6 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import Link from "next/link";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -79,7 +77,7 @@ export default function SellerOrdersPage() {
     new Set()
   );
   const [exporting, setExporting] = useState(false);
-  const [statusTab, setStatusTab] = useState<OrderListTab>("paid");
+  const [statusTab, setStatusTab] = useState<OrderListTab>("all");
   const [dateFilter, setDateFilter] = useState("");
   const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
   const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
@@ -135,18 +133,25 @@ export default function SellerOrdersPage() {
     );
   }, [orders]);
 
-  const calendarSourceOrders = useMemo(() => {
-    if (statusTab === "all") return orders;
-    return orders.filter((o) => o.status === statusTab);
-  }, [orders, statusTab]);
-
-  const countsByDate = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const o of calendarSourceOrders) {
-      map[o.orderDate] = (map[o.orderDate] ?? 0) + 1;
+  const statusCountsByDate = useMemo(() => {
+    const map: Record<
+      string,
+      { draft: number; paid: number; exported: number }
+    > = {};
+    for (const o of orders) {
+      if (
+        o.status !== "draft" &&
+        o.status !== "paid" &&
+        o.status !== "exported"
+      ) {
+        continue;
+      }
+      const entry = map[o.orderDate] ?? { draft: 0, paid: 0, exported: 0 };
+      entry[o.status]++;
+      map[o.orderDate] = entry;
     }
     return map;
-  }, [calendarSourceOrders]);
+  }, [orders]);
 
   const filteredOrders = useMemo(() => {
     let list = orders;
@@ -484,22 +489,11 @@ export default function SellerOrdersPage() {
     <>
       <Script src={KAKAO_POSTCODE_SCRIPT} strategy="afterInteractive" />
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900">
-              ② 답장 · 발주
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              고객 답장 분석 → 저장 → 입금확인 → xlsx 출력
-            </p>
-          </div>
-          <Link
-            href="/seller/outbound-sms"
-            className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800 hover:bg-blue-100"
-          >
-            ① 안내 문자
-            <ArrowRight className="h-4 w-4" />
-          </Link>
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-slate-900">② 답장 · 발주</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            고객 답장 분석 → 저장 → 입금확인 → xlsx 출력
+          </p>
         </div>
 
         <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50/30 p-6 shadow-sm">
@@ -938,13 +932,13 @@ export default function SellerOrdersPage() {
             ))}
           </div>
 
-          {Object.keys(countsByDate).length > 0 && (
+          {orders.length > 0 && (
             <div className="mb-4">
               <p className="mb-2 text-xs font-medium text-slate-500">
-                발주일 달력 (숫자 = 해당일 건수)
+                발주일 달력 (빨강·초록·파랑 = 입금대기·발주준비·다운로드완료)
               </p>
               <OrderDateCalendar
-                countsByDate={countsByDate}
+                countsByDate={statusCountsByDate}
                 selectedDate={dateFilter}
                 onSelectDate={setDateFilter}
               />

@@ -378,33 +378,57 @@ export async function upsertSellerAliases(
   shopId: string,
   aliases: { productId: string; smsName: string }[]
 ) {
+  if (!aliases.length) return;
+
   const supabase = createServerClient();
   const now = new Date().toISOString();
+  const productIds = aliases.map((a) => a.productId);
+
+  const { data: existingRows, error: fetchError } = await supabase
+    .from("seller_product_aliases")
+    .select("id, product_id, sms_name")
+    .eq("shop_id", shopId)
+    .in("product_id", productIds);
+  if (fetchError) throw fetchError;
+
+  const existingByProduct = new Map(
+    (existingRows ?? []).map((row) => [row.product_id as string, row])
+  );
+
+  const inserts: Record<string, unknown>[] = [];
+  const updateTasks: Array<() => Promise<void>> = [];
 
   for (const { productId, smsName } of aliases) {
-    const { data: existing } = await supabase
-      .from("seller_product_aliases")
-      .select("id")
-      .eq("shop_id", shopId)
-      .eq("product_id", productId)
-      .maybeSingle();
+    const trimmed = smsName.trim();
+    const existing = existingByProduct.get(productId);
 
     if (existing) {
-      const { error } = await supabase
-        .from("seller_product_aliases")
-        .update({ sms_name: smsName.trim(), updated_at: now })
-        .eq("id", existing.id);
-      if (error) throw error;
-    } else if (smsName.trim()) {
-      const { error } = await supabase.from("seller_product_aliases").insert({
+      if ((existing.sms_name as string) === trimmed) continue;
+      const rowId = existing.id as string;
+      updateTasks.push(async () => {
+        const { error } = await supabase
+          .from("seller_product_aliases")
+          .update({ sms_name: trimmed, updated_at: now })
+          .eq("id", rowId);
+        if (error) throw error;
+      });
+    } else if (trimmed) {
+      inserts.push({
         id: uuidv4(),
         shop_id: shopId,
         product_id: productId,
-        sms_name: smsName.trim(),
+        sms_name: trimmed,
         created_at: now,
         updated_at: now,
       });
-      if (error) throw error;
     }
+  }
+
+  await Promise.all(updateTasks.map((task) => task()));
+  if (inserts.length) {
+    const { error } = await supabase
+      .from("seller_product_aliases")
+      .insert(inserts);
+    if (error) throw error;
   }
 }

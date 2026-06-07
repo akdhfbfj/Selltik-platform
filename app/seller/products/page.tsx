@@ -69,25 +69,43 @@ export default function SellerProductsPage() {
     setError("");
     setSuccess("");
 
-    const aliases = products.map((p) => ({
-      productId: p.id,
-      smsName: drafts[p.id] ?? "",
-    }));
+    const aliases = products
+      .filter((p) => (drafts[p.id] ?? "") !== (p.smsName ?? ""))
+      .map((p) => ({
+        productId: p.id,
+        smsName: drafts[p.id] ?? "",
+      }));
 
-    const res = await fetch("/api/seller/products", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ aliases }),
-    });
-    const data = await res.json();
-
-    if (!res.ok) {
-      setError(data.error || "저장에 실패했습니다.");
-    } else {
-      setSuccess("문자용 상품명이 저장되었습니다.");
-      setProducts(data.products);
+    if (aliases.length === 0) {
+      setSuccess("변경된 내용이 없습니다.");
+      setSaving(false);
+      return;
     }
-    setSaving(false);
+
+    try {
+      const res = await fetch("/api/seller/products", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aliases }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "저장에 실패했습니다.");
+      } else {
+        setSuccess(`문자용 상품명 ${aliases.length}건이 저장되었습니다.`);
+        setProducts(data.products);
+        const map: Record<string, string> = {};
+        for (const p of data.products as SellerProductView[]) {
+          map[p.id] = p.smsName;
+        }
+        setDrafts(map);
+      }
+    } catch {
+      setError("저장 중 오류가 발생했습니다. 네트워크를 확인해 주세요.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const filtered = products.filter(
