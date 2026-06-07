@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import KakaoPostcodePicker, {
+  type PostcodePickResult,
+} from "@/components/KakaoPostcodePicker";
 import ProductSearchInput from "@/components/ProductSearchInput";
 import {
   buildOutboundSmsBodyFromCart,
@@ -26,7 +29,6 @@ import {
   Copy,
   ImageIcon,
   Loader2,
-  MapPin,
   MessageSquare,
   Plus,
   Save,
@@ -72,10 +74,6 @@ export default function SellerOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [resolving, setResolving] = useState(false);
-  const [addressResults, setAddressResults] = useState<
-    { postalCode: string; address: string }[]
-  >([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [smsSaveSuccess, setSmsSaveSuccess] = useState("");
@@ -260,8 +258,6 @@ export default function SellerOrdersPage() {
     setParsing(true);
     setError("");
     setSuccess("");
-    setAddressResults([]);
-
     const res = await fetch("/api/seller/orders/parse", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -277,31 +273,12 @@ export default function SellerOrdersPage() {
     setParsing(false);
   };
 
-  const handleResolveAddress = async () => {
-    if (!draft?.address.trim()) return;
-    setResolving(true);
-    setError("");
-
-    const res = await fetch("/api/seller/orders/resolve-address", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: draft.address }),
-    });
-    const data = await res.json();
-
-    if (!res.ok) {
-      setError(data.error || "주소 검색에 실패했습니다.");
-    } else {
-      setAddressResults(data.results ?? []);
-    }
-    setResolving(false);
-  };
-
-  const applyAddress = (postalCode: string, address: string) => {
+  const applyPostcodePick = (result: PostcodePickResult) => {
     if (!draft) return;
     const product = draft.productId
       ? products.find((p) => p.id === draft.productId)
       : null;
+    const { postalCode, address } = result;
     setDraft({
       ...draft,
       postalCode,
@@ -312,7 +289,6 @@ export default function SellerOrdersPage() {
         draft.isRemoteArea
       ),
     });
-    setAddressResults([]);
   };
 
   const handleRemoteToggle = (checked: boolean) => {
@@ -823,42 +799,21 @@ export default function SellerOrdersPage() {
               <label className="mb-1 block text-xs font-medium text-slate-600">
                 주소
               </label>
-              <div className="flex gap-2">
-                <input
-                  className={inputClass}
-                  value={draft.address}
-                  onChange={(e) => updateDraft({ address: e.target.value })}
-                />
-                <button
-                  type="button"
-                  onClick={handleResolveAddress}
-                  disabled={resolving || !draft.address.trim()}
-                  className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                  title="카카오 주소 검색 (KAKAO_REST_API_KEY 필요)"
-                >
-                  {resolving ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <MapPin className="h-4 w-4" />
-                  )}
-                  검색
-                </button>
-              </div>
-              {addressResults.length > 0 && (
-                <ul className="mt-2 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-2 text-sm">
-                  {addressResults.map((r, i) => (
-                    <li key={i}>
-                      <button
-                        type="button"
-                        onClick={() => applyAddress(r.postalCode, r.address)}
-                        className="w-full rounded px-2 py-1.5 text-left hover:bg-white"
-                      >
-                        [{r.postalCode}] {r.address}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <KakaoPostcodePicker
+                rawAddress={draft.address}
+                onPick={applyPostcodePick}
+                onStatus={(msg) => {
+                  setError("");
+                  setSuccess(msg);
+                }}
+                inputSlot={
+                  <input
+                    className={`${inputClass} min-w-0 flex-1`}
+                    value={draft.address}
+                    onChange={(e) => updateDraft({ address: e.target.value })}
+                  />
+                }
+              />
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-medium text-slate-600">
