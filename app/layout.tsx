@@ -9,8 +9,13 @@ const notoSans = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
-  title: "신상품 관리",
-  description: "신상품 추천 및 업체 컨택 관리",
+  title: "셀틱 발주 관리",
+  description: "셀틱 셀러 발주·안내 문자·공급가 관리",
+  openGraph: {
+    title: "셀틱 발주 관리",
+    description: "셀틱 셀러 발주·안내 문자·공급가 관리",
+    siteName: "셀틱",
+  },
 };
 
 export default function RootLayout({

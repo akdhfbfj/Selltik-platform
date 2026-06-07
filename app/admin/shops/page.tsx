@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import AdminNav from "@/components/AdminNav";
 import type { Shop } from "@/lib/types";
-import { Loader2, Plus, Store, Users } from "lucide-react";
+import { KeyRound, Loader2, Plus, Store, Users } from "lucide-react";
 
 export default function AdminShopsPage() {
   const [shops, setShops] = useState<Shop[]>([]);
@@ -16,6 +16,9 @@ export default function AdminShopsPage() {
     contactEmail: "",
     password: "",
   });
+  const [resetShopId, setResetShopId] = useState<string | null>(null);
+  const [tempPassword, setTempPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   const loadShops = useCallback(async () => {
     setLoading(true);
@@ -54,8 +57,35 @@ export default function AdminShopsPage() {
     setSaving(false);
   };
 
+  const handleResetPassword = async () => {
+    if (!resetShopId || !tempPassword) return;
+    setResetting(true);
+    setError("");
+    setSuccess("");
+
+    const res = await fetch(`/api/admin/shops/${resetShopId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: tempPassword }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data.error || "임시 비밀번호 발급에 실패했습니다.");
+    } else {
+      setSuccess(
+        `${data.shopName} 셀러에게 전달할 임시 비밀번호가 설정되었습니다.`
+      );
+      setResetShopId(null);
+      setTempPassword("");
+    }
+    setResetting(false);
+  };
+
   const inputClass =
     "w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
+
+  const resetTarget = shops.find((s) => s.id === resetShopId);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -67,9 +97,53 @@ export default function AdminShopsPage() {
             셀러 계정 관리
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            셀러 로그인용 계정을 만듭니다. 생성 후 셀러에게 이메일·비밀번호를 전달하세요.
+            셀러 로그인용 계정을 만들고, 비밀번호 분실 시 임시 비밀번호를 발급합니다.
           </p>
         </div>
+
+        {resetShopId && resetTarget && (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
+            <h3 className="flex items-center gap-2 font-semibold text-slate-900">
+              <KeyRound className="h-5 w-5 text-amber-600" />
+              임시 비밀번호 발급 — {resetTarget.name}
+            </h3>
+            <p className="mt-1 text-sm text-slate-600">
+              {resetTarget.contactEmail} · 셀러에게 직접 전달하세요.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <input
+                type="text"
+                className={`${inputClass} min-w-[12rem] flex-1`}
+                value={tempPassword}
+                onChange={(e) => setTempPassword(e.target.value)}
+                placeholder="임시 비밀번호 (6자 이상)"
+                minLength={6}
+              />
+              <button
+                type="button"
+                onClick={handleResetPassword}
+                disabled={resetting || tempPassword.length < 6}
+                className="rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+              >
+                {resetting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "발급"
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setResetShopId(null);
+                  setTempPassword("");
+                }}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-600 hover:bg-white"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-2">
           <form
@@ -110,10 +184,10 @@ export default function AdminShopsPage() {
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  임시 비밀번호
+                  초기 비밀번호
                 </label>
                 <input
-                  type="text"
+                  type="password"
                   className={inputClass}
                   value={form.password}
                   onChange={(e) =>
@@ -122,6 +196,7 @@ export default function AdminShopsPage() {
                   placeholder="6자 이상"
                   minLength={6}
                   required
+                  autoComplete="new-password"
                 />
               </div>
             </div>
@@ -162,13 +237,27 @@ export default function AdminShopsPage() {
                 {shops.map((shop) => (
                   <li
                     key={shop.id}
-                    className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/50 p-4"
+                    className="flex items-start justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/50 p-4"
                   >
-                    <Store className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
-                    <div className="min-w-0">
-                      <p className="font-medium text-slate-900">{shop.name}</p>
-                      <p className="text-sm text-slate-500">{shop.contactEmail}</p>
+                    <div className="flex min-w-0 items-start gap-3">
+                      <Store className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-900">{shop.name}</p>
+                        <p className="text-sm text-slate-500">{shop.contactEmail}</p>
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResetShopId(shop.id);
+                        setTempPassword("");
+                        setError("");
+                        setSuccess("");
+                      }}
+                      className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                    >
+                      임시 PW
+                    </button>
                   </li>
                 ))}
               </ul>

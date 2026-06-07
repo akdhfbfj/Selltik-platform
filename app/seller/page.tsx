@@ -196,13 +196,6 @@ export default async function SellerHomePage() {
         ))}
       </div>
 
-      <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-        계정 없이 추천하려면{" "}
-        <Link href="/recommend" className="font-medium text-emerald-700 underline">
-          /recommend
-        </Link>
-        (쇼핑몰 이름 직접 입력)도 이용할 수 있습니다.
-      </div>
     </div>
   );
 }

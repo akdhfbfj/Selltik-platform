@@ -11,6 +11,7 @@ import {
   Package2,
   Send,
   Sparkles,
+  User,
 } from "lucide-react";
 
 interface Props {
@@ -36,8 +37,8 @@ export default function SellerNav({ shopName }: Props) {
             <Package2 className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-slate-900">{shopName}</h1>
-            <p className="text-xs text-slate-500">셀러 포털</p>
+            <h1 className="text-lg font-bold text-slate-900">셀틱</h1>
+            <p className="text-xs text-slate-500">{shopName}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -95,6 +96,17 @@ export default function SellerNav({ shopName }: Props) {
           >
             <Sparkles className="h-4 w-4" />
             신상품 추천
+          </Link>
+          <Link
+            href="/seller/account"
+            className={`hidden items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium sm:flex ${
+              pathname === "/seller/account"
+                ? "bg-emerald-50 text-emerald-700"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <User className="h-4 w-4" />
+            내 계정
           </Link>
           <button
             onClick={handleLogout}

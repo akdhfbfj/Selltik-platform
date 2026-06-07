@@ -91,12 +91,6 @@ function SellerLoginForm() {
         </button>
       </form>
 
-      <p className="mt-6 text-center text-xs text-slate-400">
-        신상품 추천만 하시려면{" "}
-        <a href="/recommend" className="text-emerald-600 underline">
-          추천 페이지
-        </a>
-      </p>
     </div>
   );
 }

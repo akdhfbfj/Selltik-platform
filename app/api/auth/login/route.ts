@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getSessionToken, SESSION_COOKIE, verifyPin } from "@/lib/auth";
+import {
+  getSessionToken,
+  isAdminAuthConfigured,
+  SESSION_COOKIE,
+  verifyPin,
+} from "@/lib/auth";
 
 export async function POST(request: Request) {
+  if (!isAdminAuthConfigured()) {
+    return NextResponse.json(
+      { error: "관리자 로그인이 설정되지 않았습니다. ADMIN_PIN·SESSION_SECRET을 확인하세요." },
+      { status: 503 }
+    );
+  }
+
   const { pin } = (await request.json()) as { pin: string };
 
   if (!verifyPin(pin)) {
@@ -13,6 +25,7 @@ export async function POST(request: Request) {
   cookieStore.set(SESSION_COOKIE, getSessionToken(), {
     httpOnly: true,
     sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
   });

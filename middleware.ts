@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getSessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { isAdminAuthConfigured, isAuthenticated, SESSION_COOKIE } from "@/lib/auth";
 
 const ADMIN_PAGES = ["/", "/inbox", "/admin"];
 const PUBLIC_PAGES = ["/recommend", "/login", "/seller/login"];
@@ -34,8 +34,9 @@ function isAdminApi(pathname: string): boolean {
 }
 
 function checkAdminPin(request: NextRequest): boolean {
+  if (!isAdminAuthConfigured()) return false;
   const session = request.cookies.get(SESSION_COOKIE)?.value;
-  return session === getSessionToken();
+  return isAuthenticated(session);
 }
 
 export async function middleware(request: NextRequest) {

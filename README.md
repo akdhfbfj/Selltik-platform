@@ -28,7 +28,7 @@ npm run dev
 ```
 
 - 셀러 추천: http://localhost:3000/recommend
-- 셀틱 관리: http://localhost:3000/login (기본 비밀번호 `1234`)
+- 셀틱 관리: http://localhost:3000/login (`ADMIN_PIN` 환경변수로 설정)
 
 ## Vercel 배포
 
