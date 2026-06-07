@@ -5,11 +5,16 @@ import KakaoPostcodePicker, {
   KAKAO_POSTCODE_SCRIPT,
   type PostcodePickResult,
 } from "@/components/KakaoPostcodePicker";
+import OrderDateCalendar from "@/components/OrderDateCalendar";
+import OrderEditForm, {
+  type OrderEditState,
+} from "@/components/OrderEditForm";
 import Script from "next/script";
 import ProductSearchInput from "@/components/ProductSearchInput";
 import { extractTextFromImage } from "@/lib/extract-image-text";
 import { sumCelticDeposit } from "@/lib/export-order-xlsx";
 import { findDuplicateOrders } from "@/lib/order-duplicates";
+import { matchesOrderSearch } from "@/lib/order-search";
 import {
   calcOrderPricing,
   recalcDraftPricing,
@@ -35,7 +40,9 @@ import {
   Download,
   ImageIcon,
   Loader2,
+  Pencil,
   Plus,
+  Search,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
@@ -76,7 +83,11 @@ export default function SellerOrdersPage() {
   const [dateFilter, setDateFilter] = useState("");
   const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
   const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [updatingOrder, setUpdatingOrder] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const editFormRef = useRef<HTMLDivElement>(null);
 
   const draftPricing = useMemo(() => {
     if (!draft) return null;
@@ -124,10 +135,18 @@ export default function SellerOrdersPage() {
     );
   }, [orders]);
 
-  const availableDates = useMemo(() => {
-    const dates = [...new Set(orders.map((o) => o.orderDate))];
-    return dates.sort((a, b) => b.localeCompare(a));
-  }, [orders]);
+  const calendarSourceOrders = useMemo(() => {
+    if (statusTab === "all") return orders;
+    return orders.filter((o) => o.status === statusTab);
+  }, [orders, statusTab]);
+
+  const countsByDate = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const o of calendarSourceOrders) {
+      map[o.orderDate] = (map[o.orderDate] ?? 0) + 1;
+    }
+    return map;
+  }, [calendarSourceOrders]);
 
   const filteredOrders = useMemo(() => {
     let list = orders;
@@ -137,8 +156,11 @@ export default function SellerOrdersPage() {
     if (dateFilter) {
       list = list.filter((o) => o.orderDate === dateFilter);
     }
+    if (searchQuery.trim()) {
+      list = list.filter((o) => matchesOrderSearch(o, searchQuery));
+    }
     return list;
-  }, [orders, statusTab, dateFilter]);
+  }, [orders, statusTab, dateFilter, searchQuery]);
 
   const groupedByDate = useMemo(() => {
     const map = new Map<string, Order[]>();
@@ -226,6 +248,7 @@ export default function SellerOrdersPage() {
     if (!res.ok) {
       setError(data.error || "분석에 실패했습니다.");
     } else {
+      setEditingOrder(null);
       setDraft(data.draft);
     }
     setParsing(false);
@@ -303,9 +326,43 @@ export default function SellerOrdersPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("이 발주 초안을 삭제할까요?")) return;
+    if (!confirm("이 발주를 삭제할까요?")) return;
     const res = await fetch(`/api/seller/orders/${id}`, { method: "DELETE" });
-    if (res.ok) loadData();
+    if (res.ok) {
+      if (editingOrder?.id === id) setEditingOrder(null);
+      loadData();
+    }
+  };
+
+  const openOrderEdit = (order: Order) => {
+    setEditingOrder(order);
+    setDraft(null);
+    requestAnimationFrame(() => {
+      editFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const handleUpdateOrder = async (payload: OrderEditState) => {
+    if (!editingOrder) return;
+    setUpdatingOrder(true);
+    setError("");
+    setSuccess("");
+
+    const res = await fetch(`/api/seller/orders/${editingOrder.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data.error || "수정에 실패했습니다.");
+    } else {
+      setSuccess("발주가 수정되었습니다.");
+      setEditingOrder(null);
+      loadData();
+    }
+    setUpdatingOrder(false);
   };
 
   const selectedOrders = useMemo(
@@ -416,7 +473,7 @@ export default function SellerOrdersPage() {
       a.click();
       URL.revokeObjectURL(url);
       setSuccess(
-        `${selectedOrderIds.size}건 발주서를 내려받았습니다. 상태가「출력됨」으로 바뀝니다.`
+        `${selectedOrderIds.size}건 발주서를 내려받았습니다. 상태가「다운로드 완료」로 바뀝니다.`
       );
       loadData();
     }
@@ -557,7 +614,20 @@ export default function SellerOrdersPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">
-                  발주일자
+                  주문일
+                </label>
+                <input
+                  type="date"
+                  className={SELLER_INPUT_CLASS}
+                  value={draft.customerOrderDate ?? todayIso()}
+                  onChange={(e) =>
+                    updateDraft({ customerOrderDate: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">
+                  발주일
                 </label>
                 <input
                   type="date"
@@ -565,6 +635,9 @@ export default function SellerOrdersPage() {
                   value={draft.orderDate ?? todayIso()}
                   onChange={(e) => updateDraft({ orderDate: e.target.value })}
                 />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  xlsx 묶음·목록 그룹 기준
+                </p>
               </div>
               <div className="sm:col-span-2">
                 <label className="mb-1 block text-xs font-medium text-slate-600">
@@ -821,6 +894,33 @@ export default function SellerOrdersPage() {
             )}
           </div>
 
+          {editingOrder && (
+            <div ref={editFormRef}>
+              <OrderEditForm
+                key={editingOrder.id}
+                order={editingOrder}
+                products={products}
+                saving={updatingOrder}
+                onSave={handleUpdateOrder}
+                onCancel={() => setEditingOrder(null)}
+              />
+            </div>
+          )}
+
+          <div className="mb-4">
+            <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              <Search className="h-3.5 w-3.5" />
+              검색
+            </label>
+            <input
+              type="search"
+              className={`${SELLER_INPUT_CLASS} bg-white`}
+              placeholder="상품명, 주문자, 수령인, 전화번호, 주소…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+
           <div className="mb-4 flex flex-wrap gap-2">
             {ORDER_LIST_TABS.map((tab) => (
               <button
@@ -838,21 +938,16 @@ export default function SellerOrdersPage() {
             ))}
           </div>
 
-          {availableDates.length > 0 && (
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <label className="text-xs font-medium text-slate-500">발주일</label>
-              <select
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-              >
-                <option value="">전체 일자</option>
-                {availableDates.map((d) => (
-                  <option key={d} value={d}>
-                    {formatOrderDateLabel(d)}
-                  </option>
-                ))}
-              </select>
+          {Object.keys(countsByDate).length > 0 && (
+            <div className="mb-4">
+              <p className="mb-2 text-xs font-medium text-slate-500">
+                발주일 달력 (숫자 = 해당일 건수)
+              </p>
+              <OrderDateCalendar
+                countsByDate={countsByDate}
+                selectedDate={dateFilter}
+                onSelectDate={setDateFilter}
+              />
             </div>
           )}
 
@@ -947,14 +1042,23 @@ export default function SellerOrdersPage() {
                             }`}
                           >
                             <div className="flex flex-wrap items-start justify-between gap-2">
-                              <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
+                              <div className="flex min-w-0 flex-1 items-start gap-3">
                                 <input
                                   type="checkbox"
                                   className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
                                   checked={selectedOrderIds.has(o.id)}
                                   onChange={() => toggleOrderSelect(o.id)}
+                                  onClick={(e) => e.stopPropagation()}
                                 />
-                                <div className="min-w-0">
+                                <button
+                                  type="button"
+                                  onClick={() => openOrderEdit(o)}
+                                  className={`min-w-0 flex-1 rounded-lg text-left transition-colors hover:bg-slate-50/80 ${
+                                    editingOrder?.id === o.id
+                                      ? "ring-2 ring-blue-300 ring-offset-1"
+                                      : ""
+                                  }`}
+                                >
                                   <p className="font-medium text-slate-900">
                                     {o.productName}
                                   </p>
@@ -962,7 +1066,13 @@ export default function SellerOrdersPage() {
                                     {o.ordererName} → {o.recipientName} ·{" "}
                                     {o.contactPhone} · 수량 {o.quantity}
                                   </p>
-                                  <p className="mt-1 text-xs text-slate-400 line-clamp-1">
+                                  <p className="mt-1 text-xs text-slate-400">
+                                    주문{" "}
+                                    {o.customerOrderDate.slice(5).replace("-", "/")}
+                                    {o.customerOrderDate !== o.orderDate &&
+                                      ` · 발주 ${o.orderDate.slice(5).replace("-", "/")}`}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-slate-400 line-clamp-1">
                                     {o.address}
                                   </p>
                                   {orderHasDuplicate(o) && (
@@ -971,8 +1081,12 @@ export default function SellerOrdersPage() {
                                       같은 날·동일 수신인 중복 가능
                                     </p>
                                   )}
-                                </div>
-                              </label>
+                                  <p className="mt-1 flex items-center gap-1 text-xs text-blue-600">
+                                    <Pencil className="h-3 w-3" />
+                                    클릭하여 수정
+                                  </p>
+                                </button>
+                              </div>
                               <div className="text-right">
                                 <span
                                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[o.status]}`}

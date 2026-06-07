@@ -13,6 +13,8 @@ function rowToOrder(row: DbRow): Order {
     id: row.id as string,
     shopId: row.shop_id as string,
     productId: (row.product_id as string) ?? null,
+    customerOrderDate:
+      (row.customer_order_date as string) ?? (row.order_date as string),
     orderDate: row.order_date as string,
     productName: row.product_name as string,
     quantity: row.quantity as number,
@@ -101,8 +103,10 @@ export async function buildOrderDraft(
     false
   );
 
+  const today = todayIso();
   return {
-    orderDate: todayIso(),
+    customerOrderDate: today,
+    orderDate: today,
     productId: product?.id ?? null,
     productName: product?.officialName ?? parsed.productName,
     quantity: parsed.quantity,
@@ -138,6 +142,10 @@ function toDbRow(
   return {
     shop_id: shopId,
     product_id: input.productId ?? null,
+    customer_order_date:
+      input.customerOrderDate?.slice(0, 10) ||
+      input.orderDate?.slice(0, 10) ||
+      todayIso(),
     order_date: input.orderDate?.slice(0, 10) || todayIso(),
     product_name: input.productName.trim(),
     quantity: input.quantity,
@@ -163,6 +171,9 @@ export function formatOrderDbError(error: { message?: string }): string {
   const msg = error.message ?? "";
   if (msg.includes("orders") && msg.includes("does not exist")) {
     return "DB 테이블이 없습니다. Supabase SQL Editor에서 005_orders.sql을 실행하세요.";
+  }
+  if (msg.includes("customer_order_date")) {
+    return "DB 컬럼이 없습니다. Supabase SQL Editor에서 008_order_customer_date.sql을 실행하세요.";
   }
   return msg || "DB 오류가 발생했습니다.";
 }

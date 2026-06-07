@@ -12,6 +12,7 @@ const sampleOrder = (overrides: Partial<Order> = {}): Order => ({
   id: "1",
   shopId: "shop",
   productId: null,
+  customerOrderDate: "2026-06-04",
   orderDate: "2026-06-05",
   productName: "테스트 상품",
   quantity: 2,
