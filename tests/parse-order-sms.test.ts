@@ -2,7 +2,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseOrderSms } from "../lib/parse-order-sms";
+import { parseOrderSms, parseProductLinesFromSms } from "../lib/parse-order-sms";
 
 interface FixtureCase {
   id: string;
@@ -43,3 +43,22 @@ for (const fc of cases) {
     }
   });
 }
+
+test("parseProductLinesFromSms: 복수 상품 라인 추출", () => {
+  const text = [
+    "셀틱 유산균 x2",
+    "비타민D x1",
+    "",
+    "주문자 홍길동",
+    "받는분 김철수",
+    "연락처 010-1234-5678",
+    "주소 서울시 강남구",
+  ].join("\n");
+
+  const lines = parseProductLinesFromSms(text);
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0].productName, "셀틱 유산균");
+  assert.equal(lines[0].quantity, 2);
+  assert.equal(lines[1].productName, "비타민D");
+  assert.equal(lines[1].quantity, 1);
+});

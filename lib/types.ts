@@ -260,6 +260,41 @@ export interface OrderInput {
   status?: OrderStatus;
 }
 
+export interface OrderDraftLineItem {
+  id: string;
+  productId: string | null;
+  productName: string;
+  quantity: number;
+  purchasePrice: number;
+  shippingFee: number;
+  supplyTotal: number;
+  celticDepositAmount: number;
+  productMatch: {
+    productId: string | null;
+    officialName: string | null;
+    matchedBy: "sms_alias" | "official_name" | "none";
+    consumerPrice: number;
+  };
+}
+
+/** 공통 배송정보 + 복수 상품 라인 */
+export interface OrderDraftBundle {
+  customerOrderDate: string;
+  orderDate: string;
+  ordererName: string;
+  recipientName: string;
+  contactPhone: string;
+  contactPhone2: string;
+  postalCode: string;
+  address: string;
+  shippingMemo: string;
+  isRemoteArea: boolean;
+  rawSmsText: string;
+  status: "draft";
+  autoParsed?: ParsedOrderSms;
+  lines: OrderDraftLineItem[];
+}
+
 export interface OrderDraftPreview extends OrderInput {
   productMatch: {
     productId: string | null;

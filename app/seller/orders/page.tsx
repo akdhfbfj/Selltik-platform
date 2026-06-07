@@ -16,14 +16,18 @@ import { sumCelticDeposit } from "@/lib/export-order-xlsx";
 import { findDuplicateOrders } from "@/lib/order-duplicates";
 import { matchesOrderSearch } from "@/lib/order-search";
 import {
-  calcOrderPricing,
-  recalcDraftPricing,
-} from "@/lib/order-pricing";
+  emptyDraftLine,
+  recalcAllDraftLines,
+  recalcDraftLineItem,
+} from "@/lib/order-draft-helpers";
+import { calcOrderPricing } from "@/lib/order-pricing";
 import { formatKrw } from "@/lib/parse-supply-csv";
 import { REMOTE_SHIPPING_SURCHARGE } from "@/lib/remote-area";
 import { SELLER_INPUT_CLASS } from "@/lib/seller-ui";
 import type {
   Order,
+  OrderDraftBundle,
+  OrderDraftLineItem,
   OrderDraftPreview,
   OrderListTab,
   SellerProductView,
@@ -54,6 +58,35 @@ function formatOrderDateLabel(iso: string): string {
   return `${y}년 ${Number(m)}월 ${Number(d)}일`;
 }
 
+function lineToOrderPayload(
+  bundle: OrderDraftBundle,
+  line: OrderDraftLineItem
+): OrderDraftPreview {
+  return {
+    customerOrderDate: bundle.customerOrderDate,
+    orderDate: bundle.orderDate,
+    productId: line.productId,
+    productName: line.productName,
+    quantity: line.quantity,
+    ordererName: bundle.ordererName,
+    recipientName: bundle.recipientName,
+    contactPhone: bundle.contactPhone,
+    contactPhone2: bundle.contactPhone2,
+    postalCode: bundle.postalCode,
+    address: bundle.address,
+    shippingMemo: bundle.shippingMemo,
+    purchasePrice: line.purchasePrice,
+    shippingFee: line.shippingFee,
+    supplyTotal: line.supplyTotal,
+    isRemoteArea: bundle.isRemoteArea,
+    rawSmsText: bundle.rawSmsText,
+    status: "draft",
+    productMatch: line.productMatch,
+    celticDepositAmount: line.celticDepositAmount,
+    autoParsed: bundle.autoParsed,
+  };
+}
+
 const STATUS_BADGE: Record<Order["status"], string> = {
   draft: "bg-amber-100 text-amber-800",
   paid: "bg-emerald-100 text-emerald-800",
@@ -63,7 +96,7 @@ const STATUS_BADGE: Record<Order["status"], string> = {
 
 export default function SellerOrdersPage() {
   const [smsText, setSmsText] = useState("");
-  const [draft, setDraft] = useState<OrderDraftPreview | null>(null);
+  const [draftBundle, setDraftBundle] = useState<OrderDraftBundle | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<SellerProductView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,19 +120,30 @@ export default function SellerOrdersPage() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const editFormRef = useRef<HTMLDivElement>(null);
 
-  const draftPricing = useMemo(() => {
-    if (!draft) return null;
-    const product = draft.productId
-      ? products.find((p) => p.id === draft.productId)
-      : null;
-    return calcOrderPricing(
-      product,
-      draft.quantity,
-      draft.postalCode,
-      draft.address,
-      draft.isRemoteArea
-    );
-  }, [draft, products]);
+  const bundleTotals = useMemo(() => {
+    if (!draftBundle) return null;
+    let customerDepositAmount = 0;
+    let celticDepositAmount = 0;
+    for (const line of draftBundle.lines) {
+      const product = line.productId
+        ? products.find((p) => p.id === line.productId)
+        : null;
+      const pricing = calcOrderPricing(
+        product,
+        line.quantity,
+        draftBundle.postalCode,
+        draftBundle.address,
+        draftBundle.isRemoteArea
+      );
+      customerDepositAmount += pricing.customerDepositAmount;
+      celticDepositAmount += pricing.celticDepositAmount;
+    }
+    return {
+      customerDepositAmount,
+      celticDepositAmount,
+      marginAmount: customerDepositAmount - celticDepositAmount,
+    };
+  }, [draftBundle, products]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -193,14 +237,14 @@ export default function SellerOrdersPage() {
   }, [orders]);
 
   const draftDuplicates = useMemo(() => {
-    if (!draft) return [];
+    if (!draftBundle) return [];
     return findDuplicateOrders(orders, {
-      orderDate: draft.orderDate ?? todayIso(),
-      ordererName: draft.ordererName,
-      recipientName: draft.recipientName,
-      contactPhone: draft.contactPhone,
+      orderDate: draftBundle.orderDate ?? todayIso(),
+      ordererName: draftBundle.ordererName,
+      recipientName: draftBundle.recipientName,
+      contactPhone: draftBundle.contactPhone,
     });
-  }, [draft, orders]);
+  }, [draftBundle, orders]);
 
   const appendSmsText = (text: string) => {
     const trimmed = text.trim();
@@ -254,79 +298,140 @@ export default function SellerOrdersPage() {
       setError(data.error || "분석에 실패했습니다.");
     } else {
       setEditingOrder(null);
-      setDraft(data.draft);
+      setDraftBundle(data.draftBundle);
     }
     setParsing(false);
   };
 
+  const updateBundle = (patch: Partial<OrderDraftBundle>) => {
+    setDraftBundle((b) => (b ? { ...b, ...patch } : b));
+  };
+
   const applyPostcodePick = (result: PostcodePickResult) => {
-    if (!draft) return;
-    const product = draft.productId
-      ? products.find((p) => p.id === draft.productId)
-      : null;
+    if (!draftBundle) return;
     const { postalCode, address } = result;
-    setDraft({
-      ...draft,
-      postalCode,
-      address,
-      ...recalcDraftPricing(
-        { ...draft, postalCode, address },
-        product,
-        draft.isRemoteArea
-      ),
+    const next = { ...draftBundle, postalCode, address };
+    setDraftBundle({
+      ...next,
+      lines: recalcAllDraftLines(next, products),
     });
   };
 
   const handleRemoteToggle = (checked: boolean) => {
-    if (!draft) return;
-    const product = draft.productId
-      ? products.find((p) => p.id === draft.productId)
-      : null;
-    updateDraft(recalcDraftPricing(draft, product, checked));
+    if (!draftBundle) return;
+    const next = { ...draftBundle, isRemoteArea: checked };
+    setDraftBundle({
+      ...next,
+      lines: recalcAllDraftLines(next, products),
+    });
   };
 
-  const updateDraft = (patch: Partial<OrderDraftPreview>) => {
-    setDraft((d) => (d ? { ...d, ...patch } : d));
+  const updateLine = (lineId: string, patch: Partial<OrderDraftLineItem>) => {
+    setDraftBundle((b) => {
+      if (!b) return b;
+      return {
+        ...b,
+        lines: b.lines.map((line) => {
+          if (line.id !== lineId) return line;
+          const next = { ...line, ...patch };
+          return recalcDraftLineItem(
+            next,
+            products,
+            b.postalCode,
+            b.address,
+            b.isRemoteArea
+          );
+        }),
+      };
+    });
   };
 
-  const handleProductSelect = (productId: string) => {
+  const handleProductSelect = (lineId: string, productId: string) => {
     const product = products.find((p) => p.id === productId);
-    if (!product || !draft) return;
-    setDraft({
-      ...draft,
-      productId: product.id,
-      productName: product.officialName,
-      ...recalcDraftPricing(draft, product, draft.isRemoteArea),
-      productMatch: {
-        productId: product.id,
-        officialName: product.officialName,
-        matchedBy: "official_name",
-        consumerPrice: product.consumerPrice,
-      },
+    if (!product || !draftBundle) return;
+    setDraftBundle({
+      ...draftBundle,
+      lines: draftBundle.lines.map((line) => {
+        if (line.id !== lineId) return line;
+        return recalcDraftLineItem(
+          {
+            ...line,
+            productId: product.id,
+            productName: product.officialName,
+            productMatch: {
+              productId: product.id,
+              officialName: product.officialName,
+              matchedBy: "official_name",
+              consumerPrice: product.consumerPrice,
+            },
+          },
+          products,
+          draftBundle.postalCode,
+          draftBundle.address,
+          draftBundle.isRemoteArea
+        );
+      }),
+    });
+  };
+
+  const addLine = () => {
+    if (!draftBundle) return;
+    setDraftBundle({
+      ...draftBundle,
+      lines: [
+        ...draftBundle.lines,
+        emptyDraftLine(products),
+      ],
+    });
+  };
+
+  const removeLine = (lineId: string) => {
+    if (!draftBundle || draftBundle.lines.length <= 1) return;
+    setDraftBundle({
+      ...draftBundle,
+      lines: draftBundle.lines.filter((l) => l.id !== lineId),
     });
   };
 
   const handleSave = async () => {
-    if (!draft) return;
+    if (!draftBundle) return;
+    const invalid = draftBundle.lines.filter((l) => !l.productName?.trim());
+    if (invalid.length > 0) {
+      setError("모든 상품을 선택해 주세요.");
+      return;
+    }
+
     setSaving(true);
     setError("");
     setSuccess("");
 
-    const res = await fetch("/api/seller/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(draft),
-    });
-    const data = await res.json();
-
-    if (!res.ok) {
-      setError(data.error || "저장에 실패했습니다.");
-    } else {
-      setSuccess("발주 초안이 저장되었습니다.");
-      setDraft(null);
-      setSmsText("");
-      loadData();
+    let saved = 0;
+    for (const line of draftBundle.lines) {
+      const res = await fetch("/api/seller/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(lineToOrderPayload(draftBundle, line)),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(
+          data.error ||
+            `${line.productName || "상품"} 저장에 실패했습니다.`
+        );
+        setSaving(false);
+        return;
+      }
+      saved++;
     }
+
+    setSuccess(
+      saved > 1
+        ? `${saved}건 발주 초안이 저장되었습니다.`
+        : "발주 초안이 저장되었습니다."
+    );
+    setDraftBundle(null);
+    setSmsText("");
+    loadData();
     setSaving(false);
   };
 
@@ -341,7 +446,7 @@ export default function SellerOrdersPage() {
 
   const openOrderEdit = (order: Order) => {
     setEditingOrder(order);
-    setDraft(null);
+    setDraftBundle(null);
     requestAnimationFrame(() => {
       editFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
@@ -563,7 +668,7 @@ export default function SellerOrdersPage() {
           </p>
         )}
 
-        {draft && (
+        {draftBundle && (
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -573,11 +678,11 @@ export default function SellerOrdersPage() {
           >
             <h3 className="mb-4 font-semibold text-slate-900">발주 초안</h3>
 
-            {draft.productMatch.matchedBy === "none" ? (
+            {draftBundle.lines.some((l) => l.productMatch.matchedBy === "none") ? (
               <div className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <div>
-                  상품을 찾지 못했습니다. 아래에서 직접 선택하거나{" "}
+                  매칭되지 않은 상품이 있습니다. 직접 선택하거나{" "}
                   <a href="/seller/products" className="font-medium underline">
                     문자용 상품명
                   </a>
@@ -586,11 +691,7 @@ export default function SellerOrdersPage() {
               </div>
             ) : (
               <p className="mb-4 text-sm text-emerald-700">
-                ✓ 상품 매칭됨 (
-                {draft.productMatch.matchedBy === "sms_alias"
-                  ? "문자용 상품명"
-                  : "공식 상품명"}
-                )
+                ✓ 상품 {draftBundle.lines.length}건 모두 매칭됨
               </p>
             )}
 
@@ -613,9 +714,9 @@ export default function SellerOrdersPage() {
                 <input
                   type="date"
                   className={SELLER_INPUT_CLASS}
-                  value={draft.customerOrderDate ?? todayIso()}
+                  value={draftBundle.customerOrderDate ?? todayIso()}
                   onChange={(e) =>
-                    updateDraft({ customerOrderDate: e.target.value })
+                    updateBundle({ customerOrderDate: e.target.value })
                   }
                 />
               </div>
@@ -626,57 +727,105 @@ export default function SellerOrdersPage() {
                 <input
                   type="date"
                   className={SELLER_INPUT_CLASS}
-                  value={draft.orderDate ?? todayIso()}
-                  onChange={(e) => updateDraft({ orderDate: e.target.value })}
+                  value={draftBundle.orderDate ?? todayIso()}
+                  onChange={(e) => updateBundle({ orderDate: e.target.value })}
                 />
                 <p className="mt-1 text-[11px] text-slate-400">
                   xlsx 묶음·목록 그룹 기준
                 </p>
               </div>
+
               <div className="sm:col-span-2">
-                <label className="mb-1 block text-xs font-medium text-slate-600">
-                  상품 선택
-                </label>
-                <ProductSearchInput
-                  products={products}
-                  value={draft.productId ?? ""}
-                  onChange={handleProductSelect}
-                />
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <label className="text-xs font-medium text-slate-600">
+                    상품 ({draftBundle.lines.length}건)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addLine}
+                    className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    상품 추가
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {draftBundle.lines.map((line, idx) => (
+                    <div
+                      key={line.id}
+                      className="rounded-xl border border-slate-200 bg-slate-50/50 p-3"
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-slate-500">
+                          상품 {idx + 1}
+                          {line.productMatch.matchedBy !== "none" && (
+                            <span className="ml-2 text-emerald-600">
+                              ✓{" "}
+                              {line.productMatch.matchedBy === "sms_alias"
+                                ? "문자용명"
+                                : "공식명"}
+                            </span>
+                          )}
+                        </span>
+                        {draftBundle.lines.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeLine(line.id)}
+                            className="rounded p-1 text-slate-400 hover:bg-white hover:text-red-600"
+                            aria-label="상품 삭제"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-[1fr_5rem]">
+                        <ProductSearchInput
+                          products={products}
+                          value={line.productId ?? ""}
+                          onChange={(productId) =>
+                            handleProductSelect(line.id, productId)
+                          }
+                        />
+                        <div>
+                          <label className="mb-1 block text-[11px] font-medium text-slate-500">
+                            수량
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            className={SELLER_INPUT_CLASS}
+                            value={line.quantity}
+                            onChange={(e) => {
+                              const quantity = Math.max(
+                                1,
+                                parseInt(e.target.value, 10) || 1
+                              );
+                              updateLine(line.id, { quantity });
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <p className="mt-2 text-right text-xs text-slate-500">
+                        셀틱 입금{" "}
+                        <span className="font-medium text-emerald-700">
+                          {formatKrw(line.celticDepositAmount)}
+                        </span>
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">
-                  수량
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  className={SELLER_INPUT_CLASS}
-                  value={draft.quantity}
-                  onChange={(e) => {
-                    const quantity = Math.max(1, parseInt(e.target.value, 10) || 1);
-                    if (!draft) return;
-                    const product = draft.productId
-                      ? products.find((p) => p.id === draft.productId)
-                      : null;
-                    updateDraft({
-                      quantity,
-                      ...recalcDraftPricing(
-                        { ...draft, quantity },
-                        product,
-                        draft.isRemoteArea
-                      ),
-                    });
-                  }}
-                />
-              </div>
+
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">
                   주문자
                 </label>
                 <input
                   className={SELLER_INPUT_CLASS}
-                  value={draft.ordererName}
-                  onChange={(e) => updateDraft({ ordererName: e.target.value })}
+                  value={draftBundle.ordererName}
+                  onChange={(e) =>
+                    updateBundle({ ordererName: e.target.value })
+                  }
                 />
               </div>
               <div>
@@ -685,8 +834,10 @@ export default function SellerOrdersPage() {
                 </label>
                 <input
                   className={SELLER_INPUT_CLASS}
-                  value={draft.recipientName}
-                  onChange={(e) => updateDraft({ recipientName: e.target.value })}
+                  value={draftBundle.recipientName}
+                  onChange={(e) =>
+                    updateBundle({ recipientName: e.target.value })
+                  }
                 />
               </div>
               <div>
@@ -695,8 +846,10 @@ export default function SellerOrdersPage() {
                 </label>
                 <input
                   className={SELLER_INPUT_CLASS}
-                  value={draft.contactPhone}
-                  onChange={(e) => updateDraft({ contactPhone: e.target.value })}
+                  value={draftBundle.contactPhone}
+                  onChange={(e) =>
+                    updateBundle({ contactPhone: e.target.value })
+                  }
                 />
               </div>
               <div>
@@ -705,8 +858,10 @@ export default function SellerOrdersPage() {
                 </label>
                 <input
                   className={SELLER_INPUT_CLASS}
-                  value={draft.contactPhone2}
-                  onChange={(e) => updateDraft({ contactPhone2: e.target.value })}
+                  value={draftBundle.contactPhone2}
+                  onChange={(e) =>
+                    updateBundle({ contactPhone2: e.target.value })
+                  }
                 />
               </div>
               <div>
@@ -715,8 +870,15 @@ export default function SellerOrdersPage() {
                 </label>
                 <input
                   className={SELLER_INPUT_CLASS}
-                  value={draft.postalCode}
-                  onChange={(e) => updateDraft({ postalCode: e.target.value })}
+                  value={draftBundle.postalCode}
+                  onChange={(e) => {
+                    const postalCode = e.target.value;
+                    const next = { ...draftBundle, postalCode };
+                    setDraftBundle({
+                      ...next,
+                      lines: recalcAllDraftLines(next, products),
+                    });
+                  }}
                 />
               </div>
               <div className="sm:col-span-2">
@@ -724,7 +886,7 @@ export default function SellerOrdersPage() {
                   주소
                 </label>
                 <KakaoPostcodePicker
-                  rawAddress={draft.address}
+                  rawAddress={draftBundle.address}
                   onPick={applyPostcodePick}
                   onStatus={(msg) => {
                     setError("");
@@ -733,8 +895,15 @@ export default function SellerOrdersPage() {
                   inputSlot={
                     <input
                       className={`${SELLER_INPUT_CLASS} min-w-0 flex-1`}
-                      value={draft.address}
-                      onChange={(e) => updateDraft({ address: e.target.value })}
+                      value={draftBundle.address}
+                      onChange={(e) => {
+                        const address = e.target.value;
+                        const next = { ...draftBundle, address };
+                        setDraftBundle({
+                          ...next,
+                          lines: recalcAllDraftLines(next, products),
+                        });
+                      }}
                     />
                   }
                 />
@@ -745,8 +914,10 @@ export default function SellerOrdersPage() {
                 </label>
                 <input
                   className={SELLER_INPUT_CLASS}
-                  value={draft.shippingMemo}
-                  onChange={(e) => updateDraft({ shippingMemo: e.target.value })}
+                  value={draftBundle.shippingMemo}
+                  onChange={(e) =>
+                    updateBundle({ shippingMemo: e.target.value })
+                  }
                 />
               </div>
               <div className="sm:col-span-2">
@@ -754,7 +925,7 @@ export default function SellerOrdersPage() {
                   <input
                     type="checkbox"
                     className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
-                    checked={draft.isRemoteArea}
+                    checked={draftBundle.isRemoteArea}
                     onChange={(e) => handleRemoteToggle(e.target.checked)}
                   />
                   <span>
@@ -770,10 +941,10 @@ export default function SellerOrdersPage() {
               </div>
             </div>
 
-            {draftPricing && (
+            {bundleTotals && (
               <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 text-sm">
                 <h4 className="mb-3 font-semibold text-slate-900">
-                  금액 확인 (저장 전)
+                  금액 확인 (저장 전 · {draftBundle.lines.length}품목 합계)
                 </h4>
                 <div className="space-y-2 rounded-lg bg-white p-3 shadow-sm">
                   <div className="flex items-start justify-between gap-4">
@@ -781,37 +952,18 @@ export default function SellerOrdersPage() {
                       <span className="text-slate-600">고객 입금액</span>
                       <p className="text-xs text-slate-400">판매가 기준</p>
                     </div>
-                    <div className="text-right">
-                      <span className="font-semibold text-slate-900">
-                        {formatKrw(draftPricing.customerDepositAmount)}
-                      </span>
-                      {draft.quantity > 1 &&
-                        draft.productMatch.consumerPrice > 0 && (
-                          <p className="text-xs text-slate-400">
-                            {formatKrw(draft.productMatch.consumerPrice)} ×{" "}
-                            {draft.quantity}
-                          </p>
-                        )}
-                    </div>
+                    <span className="font-semibold text-slate-900">
+                      {formatKrw(bundleTotals.customerDepositAmount)}
+                    </span>
                   </div>
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <span className="text-slate-600">셀틱 입금액</span>
                       <p className="text-xs text-slate-400">공급가표 계(E열)</p>
                     </div>
-                    <div className="text-right">
-                      <span className="font-semibold text-emerald-700">
-                        {formatKrw(draftPricing.celticDepositAmount)}
-                      </span>
-                      {draftPricing.unitSupplyTotal > 0 && (
-                        <p className="text-xs text-slate-400">
-                          {formatKrw(draftPricing.unitSupplyTotal)} ×{" "}
-                          {draft.quantity}
-                          {draftPricing.remoteSurcharge > 0 &&
-                            ` + 도서산간 ${formatKrw(draftPricing.remoteSurcharge)}`}
-                        </p>
-                      )}
-                    </div>
+                    <span className="font-semibold text-emerald-700">
+                      {formatKrw(bundleTotals.celticDepositAmount)}
+                    </span>
                   </div>
                   <div className="flex items-start justify-between gap-4 border-t border-slate-100 pt-2">
                     <div>
@@ -820,12 +972,12 @@ export default function SellerOrdersPage() {
                     </div>
                     <span
                       className={`font-bold ${
-                        draftPricing.marginAmount >= 0
+                        bundleTotals.marginAmount >= 0
                           ? "text-blue-700"
                           : "text-red-600"
                       }`}
                     >
-                      {formatKrw(draftPricing.marginAmount)}
+                      {formatKrw(bundleTotals.marginAmount)}
                     </span>
                   </div>
                 </div>
@@ -843,11 +995,13 @@ export default function SellerOrdersPage() {
                 ) : (
                   <Check className="h-4 w-4" />
                 )}
-                발주 저장
+                {draftBundle.lines.length > 1
+                  ? `${draftBundle.lines.length}건 발주 저장`
+                  : "발주 저장"}
               </button>
               <button
                 type="button"
-                onClick={() => setDraft(null)}
+                onClick={() => setDraftBundle(null)}
                 className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-50"
               >
                 취소

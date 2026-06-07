@@ -1,5 +1,6 @@
 "use client";
 
+import SegmentedDateInput from "@/components/SegmentedDateInput";
 import type { OrderDateStatusCounts } from "@/lib/types";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -93,11 +94,11 @@ export default function OrderDateCalendar({
             날짜 검색
           </label>
           <div className="flex gap-2">
-            <input
-              type="date"
+            <SegmentedDateInput
               value={jumpDate}
-              onChange={(e) => setJumpDate(e.target.value)}
-              className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700"
+              onChange={setJumpDate}
+              onComplete={goToDate}
+              className="min-w-0 flex-1"
             />
             <button
               type="button"

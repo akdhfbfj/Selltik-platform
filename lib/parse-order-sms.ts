@@ -574,3 +574,42 @@ export function parseOrderSms(text: string): ParsedOrderSms {
 
   return result;
 }
+
+/** 문자 상단에서 상품·수량 라인 추출 (복수 상품) */
+export function parseProductLinesFromSms(
+  text: string,
+  parsed?: ParsedOrderSms
+): { productName: string; quantity: number }[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const items: { productName: string; quantity: number }[] = [];
+
+  for (const line of lines) {
+    if (isSkippableLine(line) || isLabelLine(line)) continue;
+    if (looksLikeAddress(line) || hasPhone(line)) continue;
+
+    const qty = parseQuantityFromLine(line);
+    const hasQtyMarker = qty !== null || /[x×X]\s*\d/.test(line);
+    if (!hasQtyMarker) continue;
+
+    const name = stripQuantityFromProduct(line).trim();
+    if (name.length < 2) continue;
+    if (/^(받는|수령|연락|주소|배송|입금)/i.test(name)) continue;
+
+    items.push({ productName: name, quantity: qty ?? 1 });
+  }
+
+  if (items.length === 0) {
+    const p = parsed ?? parseOrderSms(text);
+    if (p.productName.trim()) {
+      items.push({
+        productName: p.productName.trim(),
+        quantity: p.quantity || 1,
+      });
+    }
+  }
+
+  return items;
+}

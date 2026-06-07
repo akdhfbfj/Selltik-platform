@@ -1,8 +1,28 @@
 import { v4 as uuidv4 } from "uuid";
-import type { Order, OrderDraftPreview, OrderInput, SellerProductView } from "./types";
+import type {
+  Order,
+  OrderDraftBundle,
+  OrderDraftLineItem,
+  OrderDraftPreview,
+  OrderInput,
+  SellerProductView,
+} from "./types";
 import type { ParsedOrderSms } from "./parse-order-sms";
+import { parseProductLinesFromSms } from "./parse-order-sms";
+import {
+  buildDraftLineItem,
+  emptyDraftLine,
+} from "./order-draft-helpers";
 import { calcOrderPricing } from "./order-pricing";
 import { getSellerProductViews } from "./products";
+
+export {
+  buildDraftLineItem,
+  emptyDraftLine,
+  matchProductBySmsName,
+  recalcAllDraftLines,
+  recalcDraftLineItem,
+} from "./order-draft-helpers";
 import { saveSmsParseSample } from "./sms-parse-samples";
 import { createServerClient } from "./supabase/server";
 
@@ -37,79 +57,33 @@ function rowToOrder(row: DbRow): Order {
   };
 }
 
-function normalizeName(s: string): string {
-  return s.replace(/\s/g, "").toLowerCase();
-}
-
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function matchProductBySmsName(
-  productName: string,
-  products: SellerProductView[]
-): {
-  product: SellerProductView | null;
-  matchedBy: OrderDraftPreview["productMatch"]["matchedBy"];
-} {
-  const query = normalizeName(productName);
-  if (!query) return { product: null, matchedBy: "none" };
-
-  const aliasHit = products.find(
-    (p) => p.smsName && normalizeName(p.smsName) === query
-  );
-  if (aliasHit) return { product: aliasHit, matchedBy: "sms_alias" };
-
-  const aliasContains = products.find(
-    (p) =>
-      p.smsName &&
-      (normalizeName(p.smsName).includes(query) ||
-        query.includes(normalizeName(p.smsName)))
-  );
-  if (aliasContains) return { product: aliasContains, matchedBy: "sms_alias" };
-
-  const officialHit = products.find(
-    (p) => normalizeName(p.officialName) === query
-  );
-  if (officialHit) return { product: officialHit, matchedBy: "official_name" };
-
-  const officialContains = products.find(
-    (p) =>
-      normalizeName(p.officialName).includes(query) ||
-      query.includes(normalizeName(p.officialName))
-  );
-  if (officialContains)
-    return { product: officialContains, matchedBy: "official_name" };
-
-  return { product: null, matchedBy: "none" };
-}
-
-export async function buildOrderDraft(
+export async function buildOrderDraftBundle(
   shopId: string,
   parsed: ParsedOrderSms,
   rawSmsText: string
-): Promise<OrderDraftPreview> {
+): Promise<OrderDraftBundle> {
   const products = await getSellerProductViews(shopId);
-  const { product, matchedBy } = matchProductBySmsName(
-    parsed.productName,
-    products
-  );
-
-  const pricing = calcOrderPricing(
-    product,
-    parsed.quantity,
-    parsed.postalCode,
-    parsed.address,
-    false
-  );
-
   const today = todayIso();
+  const productLines = parseProductLinesFromSms(rawSmsText, parsed);
+
+  const lines = productLines.map((pl) =>
+    buildDraftLineItem(
+      products,
+      pl.productName,
+      pl.quantity,
+      parsed.postalCode,
+      parsed.address,
+      false
+    )
+  );
+
   return {
     customerOrderDate: today,
     orderDate: today,
-    productId: product?.id ?? null,
-    productName: product?.officialName ?? parsed.productName,
-    quantity: parsed.quantity,
     ordererName: parsed.ordererName,
     recipientName: parsed.recipientName || parsed.ordererName,
     contactPhone: parsed.contactPhone,
@@ -117,20 +91,44 @@ export async function buildOrderDraft(
     postalCode: parsed.postalCode,
     address: parsed.address,
     shippingMemo: parsed.shippingMemo,
-    purchasePrice: pricing.purchasePrice,
-    shippingFee: pricing.shippingFee,
-    supplyTotal: pricing.supplyTotal,
-    isRemoteArea: pricing.isRemoteArea,
+    isRemoteArea: false,
     rawSmsText,
     status: "draft",
-    productMatch: {
-      productId: product?.id ?? null,
-      officialName: product?.officialName ?? null,
-      matchedBy,
-      consumerPrice: product?.consumerPrice ?? 0,
-    },
-    celticDepositAmount: pricing.celticDepositAmount,
     autoParsed: { ...parsed },
+    lines: lines.length ? lines : [emptyDraftLine(products)],
+  };
+}
+
+/** @deprecated 단일 상품 — bundle 첫 줄 기준 */
+export async function buildOrderDraft(
+  shopId: string,
+  parsed: ParsedOrderSms,
+  rawSmsText: string
+): Promise<OrderDraftPreview> {
+  const bundle = await buildOrderDraftBundle(shopId, parsed, rawSmsText);
+  const line = bundle.lines[0];
+  return {
+    customerOrderDate: bundle.customerOrderDate,
+    orderDate: bundle.orderDate,
+    productId: line.productId,
+    productName: line.productName,
+    quantity: line.quantity,
+    ordererName: bundle.ordererName,
+    recipientName: bundle.recipientName,
+    contactPhone: bundle.contactPhone,
+    contactPhone2: bundle.contactPhone2,
+    postalCode: bundle.postalCode,
+    address: bundle.address,
+    shippingMemo: bundle.shippingMemo,
+    purchasePrice: line.purchasePrice,
+    shippingFee: line.shippingFee,
+    supplyTotal: line.supplyTotal,
+    isRemoteArea: bundle.isRemoteArea,
+    rawSmsText,
+    status: "draft",
+    productMatch: line.productMatch,
+    celticDepositAmount: line.celticDepositAmount,
+    autoParsed: bundle.autoParsed,
   };
 }
 

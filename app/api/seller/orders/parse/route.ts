@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildOrderDraft, formatOrderDbError } from "@/lib/orders";
+import { buildOrderDraftBundle, formatOrderDbError } from "@/lib/orders";
 import { parseOrderSms } from "@/lib/parse-order-sms";
 import { requireSellerShop } from "@/lib/seller";
 
@@ -19,8 +19,8 @@ export async function POST(request: Request) {
     }
 
     const parsed = parseOrderSms(text);
-    const draft = await buildOrderDraft(shop.id, parsed, text);
-    return NextResponse.json({ parsed, draft });
+    const draftBundle = await buildOrderDraftBundle(shop.id, parsed, text);
+    return NextResponse.json({ parsed, draftBundle });
   } catch (e) {
     const err = e as { message?: string };
     return NextResponse.json(
