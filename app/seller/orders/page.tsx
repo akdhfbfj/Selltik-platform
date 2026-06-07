@@ -1,11 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ProductSearchInput from "@/components/ProductSearchInput";
 import {
   buildOutboundSmsBody,
   composeOutboundSms,
 } from "@/lib/build-outbound-sms";
+import { extractTextFromImage } from "@/lib/extract-image-text";
 import { formatKrw } from "@/lib/parse-supply-csv";
+import {
+  getDefaultSmsFooter,
+  getDefaultSmsHeader,
+} from "@/lib/sms-templates";
 import type { Order, OrderDraftPreview, SellerProductView } from "@/lib/types";
 import { ORDER_STATUS_LABELS } from "@/lib/types";
 import {
@@ -13,6 +19,7 @@ import {
   Check,
   ClipboardPaste,
   Copy,
+  ImageIcon,
   Loader2,
   MapPin,
   MessageSquare,
@@ -40,13 +47,17 @@ export default function SellerOrdersPage() {
   const [outboundQty, setOutboundQty] = useState(1);
   const [savingSettings, setSavingSettings] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [shopName, setShopName] = useState("");
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [ordersRes, productsRes, settingsRes] = await Promise.all([
+    const [ordersRes, productsRes, settingsRes, meRes] = await Promise.all([
       fetch("/api/seller/orders"),
       fetch("/api/seller/products"),
       fetch("/api/seller/settings"),
+      fetch("/api/seller/me"),
     ]);
     if (ordersRes.ok) {
       const data = await ordersRes.json();
@@ -61,8 +72,48 @@ export default function SellerOrdersPage() {
       setSmsHeader(data.smsHeader ?? "");
       setSmsFooter(data.smsFooter ?? "");
     }
+    if (meRes.ok) {
+      const data = await meRes.json();
+      setShopName(data.shop?.name ?? "");
+    }
     setLoading(false);
   }, []);
+
+  const appendSmsText = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setSmsText((prev) => (prev.trim() ? `${prev.trim()}\n\n${trimmed}` : trimmed));
+  };
+
+  const runOcrOnImage = async (file: Blob) => {
+    setOcrLoading(true);
+    setError("");
+    try {
+      const text = await extractTextFromImage(file);
+      if (!text) {
+        setError("이미지에서 글자를 찾지 못했습니다. 텍스트를 직접 붙여넣어 주세요.");
+      } else {
+        appendSmsText(text);
+        setSuccess("이미지에서 글자를 추출했습니다. 내용을 확인한 뒤 분석하기를 눌러주세요.");
+      }
+    } catch {
+      setError("이미지 분석에 실패했습니다. 스크린샷에서 텍스트를 복사해 붙여넣어 주세요.");
+    }
+    setOcrLoading(false);
+  };
+
+  const handleReplyPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) runOcrOnImage(file);
+        return;
+      }
+    }
+  };
 
   const outboundProduct = products.find((p) => p.id === outboundProductId);
 
@@ -255,23 +306,45 @@ export default function SellerOrdersPage() {
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="space-y-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">
-                상단 문구 (인사말 등)
-              </label>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <label className="text-xs font-medium text-slate-600">
+                  상단 문구 (인사말 등)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setSmsHeader(getDefaultSmsHeader(shopName))}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                >
+                  예시 문구 넣기
+                </button>
+              </div>
               <textarea
                 className={`${inputClass} min-h-[72px] resize-y bg-white`}
-                placeholder="안녕하세요, 띵동이네입니다 :)"
+                placeholder={
+                  shopName
+                    ? getDefaultSmsHeader(shopName)
+                    : "안녕하세요, 쇼핑몰입니다 :)"
+                }
                 value={smsHeader}
                 onChange={(e) => setSmsHeader(e.target.value)}
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">
-                하단 문구 (계좌번호·안내 등)
-              </label>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <label className="text-xs font-medium text-slate-600">
+                  하단 문구 (계좌번호·안내 등)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setSmsFooter(getDefaultSmsFooter())}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                >
+                  예시 문구 넣기
+                </button>
+              </div>
               <textarea
                 className={`${inputClass} min-h-[96px] resize-y bg-white`}
-                placeholder={`입금 계좌: OO은행 1234-5678-90 예금주\n입금 후 성함·연락처·주소를 문자로 보내주세요.`}
+                placeholder={getDefaultSmsFooter()}
                 value={smsFooter}
                 onChange={(e) => setSmsFooter(e.target.value)}
               />
@@ -293,19 +366,11 @@ export default function SellerOrdersPage() {
                 <label className="mb-1 block text-xs font-medium text-slate-600">
                   상품 (본문)
                 </label>
-                <select
-                  className={`${inputClass} bg-white`}
+                <ProductSearchInput
+                  products={products}
                   value={outboundProductId}
-                  onChange={(e) => setOutboundProductId(e.target.value)}
-                >
-                  <option value="">상품을 선택하세요</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.smsName ? `[${p.smsName}] ` : ""}
-                      {p.officialName} · {formatKrw(p.consumerPrice)}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setOutboundProductId}
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">
@@ -364,28 +429,60 @@ export default function SellerOrdersPage() {
       </div>
 
       <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50/30 p-6 shadow-sm">
-        <h3 className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
+        <h3 className="mb-1 flex items-center gap-2 font-semibold text-slate-900">
           <ClipboardPaste className="h-5 w-5 text-emerald-600" />
           ② 고객 답장 붙여넣기
         </h3>
+        <p className="mb-3 text-xs text-slate-500">
+          문자 내용을 붙여넣거나, 스크린샷 이미지를 붙여넣기(Ctrl+V)·업로드하면
+          글자를 추출합니다. 모바일은 이미지에서 「텍스트 복사」 후 붙여넣기도
+          가능합니다.
+        </p>
         <textarea
           className={`${inputClass} min-h-[140px] resize-y bg-white`}
           placeholder={`예시)\n쉬젤 올뉴엘레강스 IH에그롤팬 x1\n받는분: 홍길동\n연락처: 010-1234-5678\n주소: (06234) 서울 강남구 ...\n배송메모: 문앞에 놔주세요`}
           value={smsText}
           onChange={(e) => setSmsText(e.target.value)}
+          onPaste={handleReplyPaste}
         />
-        <button
-          onClick={handleParse}
-          disabled={parsing || !smsText.trim()}
-          className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-        >
-          {parsing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4" />
-          )}
-          분석하기
-        </button>
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) runOcrOnImage(file);
+            e.target.value = "";
+          }}
+        />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            disabled={ocrLoading}
+            className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-medium text-emerald-800 hover:bg-emerald-50 disabled:opacity-60"
+          >
+            {ocrLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ImageIcon className="h-4 w-4" />
+            )}
+            이미지에서 글자 추출
+          </button>
+          <button
+            onClick={handleParse}
+            disabled={parsing || ocrLoading || !smsText.trim()}
+            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+          >
+            {parsing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
+            분석하기
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -435,19 +532,11 @@ export default function SellerOrdersPage() {
               <label className="mb-1 block text-xs font-medium text-slate-600">
                 상품 선택
               </label>
-              <select
-                className={inputClass}
+              <ProductSearchInput
+                products={products}
                 value={draft.productId ?? ""}
-                onChange={(e) => handleProductSelect(e.target.value)}
-              >
-                <option value="">— 직접 선택 —</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.smsName ? `[${p.smsName}] ` : ""}
-                    {p.officialName}
-                  </option>
-                ))}
-              </select>
+                onChange={handleProductSelect}
+              />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">
