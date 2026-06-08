@@ -98,30 +98,124 @@ function mmsDirection(attrs: Record<string, string>): number {
   return Number(attrs.type) || SMS_TYPE_RECEIVED;
 }
 
+/** 한 줄짜리 `<sms … />` 태그 파싱 */
+export function parseSmsLine(
+  line: string,
+  index: number
+): SmsBackupMessage | null {
+  const trimmed = line.trimStart();
+  if (!trimmed.startsWith("<sms")) return null;
+
+  const m = trimmed.match(/<sms\s+([^>]+)\s*\/?>/i);
+  if (!m) return null;
+
+  const attrs = parseAttrs(m[1]);
+  const body = attrs.body?.trim();
+  if (!body) return null;
+
+  const dateMs = Number(attrs.date);
+  if (!Number.isFinite(dateMs)) return null;
+
+  return {
+    id: `sms-${dateMs}-${attrs.address ?? index}-${index}`,
+    kind: "sms",
+    address: attrs.address ?? "",
+    body,
+    dateMs,
+    dateIso: smsDateToIso(dateMs),
+    type: Number(attrs.type) || 0,
+    readableDate: attrs.readable_date,
+  };
+}
+
+async function* iterateFileLines(file: File): AsyncGenerator<string> {
+  const reader = file.stream().pipeThrough(new TextDecoderStream()).getReader();
+  let partial = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    partial += value;
+    let nl = partial.indexOf("\n");
+    while (nl !== -1) {
+      yield partial.slice(0, nl).replace(/\r$/, "");
+      partial = partial.slice(nl + 1);
+      nl = partial.indexOf("\n");
+    }
+  }
+  if (partial.length > 0) {
+    yield partial.replace(/\r$/, "");
+  }
+}
+
+/**
+ * 대용량 XML (MMS 이미지 포함) — 줄 단위 스트리밍으로 SMS만 추출.
+ * MMS 블록은 건너뛰고 개수만 집계합니다.
+ */
+export async function parseSmsBackupFile(
+  file: File,
+  onProgress?: (count: number) => void
+): Promise<SmsBackupParseResult> {
+  const messages: SmsBackupMessage[] = [];
+  let smsCount = 0;
+  let mmsCount = 0;
+  let backupDate: string | undefined;
+  let smsIndex = 0;
+  let skippingMms = false;
+
+  for await (const line of iterateFileLines(file)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    if (!backupDate) {
+      const root = trimmed.match(/<smses\s+([^>]+)>/i);
+      if (root) backupDate = parseAttrs(root[1]).backup_date;
+    }
+
+    if (skippingMms) {
+      if (trimmed.includes("</mms>")) skippingMms = false;
+      continue;
+    }
+
+    if (/<mms\s/i.test(trimmed)) {
+      mmsCount += 1;
+      if (!trimmed.includes("</mms>")) skippingMms = true;
+      continue;
+    }
+
+    const sms = parseSmsLine(trimmed, smsIndex);
+    if (!sms) continue;
+
+    messages.push(sms);
+    smsCount += 1;
+    smsIndex += 1;
+    if (smsIndex % 200 === 0) onProgress?.(smsIndex);
+  }
+
+  onProgress?.(smsCount);
+  messages.sort((a, b) => a.dateMs - b.dateMs);
+
+  return { messages, smsCount, mmsCount, backupDate };
+}
+
 function parseSmsElements(xml: string): SmsBackupMessage[] {
   const out: SmsBackupMessage[] = [];
-  const re = /<sms\s+([^>]+?)\s*\/?>/gi;
-  let m: RegExpExecArray | null;
   let index = 0;
 
+  for (const line of xml.split(/\r?\n/)) {
+    const sms = parseSmsLine(line, index);
+    if (!sms) continue;
+    out.push(sms);
+    index += 1;
+  }
+
+  if (out.length > 0) return out;
+
+  const re = /<sms\s+([^>]+?)\s*\/?>/gi;
+  let m: RegExpExecArray | null;
   while ((m = re.exec(xml)) !== null) {
-    const attrs = parseAttrs(m[1]);
-    const body = attrs.body?.trim();
-    if (!body) continue;
-
-    const dateMs = Number(attrs.date);
-    if (!Number.isFinite(dateMs)) continue;
-
-    out.push({
-      id: `sms-${dateMs}-${attrs.address ?? index}-${index}`,
-      kind: "sms",
-      address: attrs.address ?? "",
-      body,
-      dateMs,
-      dateIso: smsDateToIso(dateMs),
-      type: Number(attrs.type) || 0,
-      readableDate: attrs.readable_date,
-    });
+    const sms = parseSmsLine(`<sms ${m[1]}/>`, index);
+    if (!sms) continue;
+    out.push(sms);
     index += 1;
   }
 

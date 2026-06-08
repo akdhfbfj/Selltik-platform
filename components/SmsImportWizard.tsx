@@ -11,7 +11,7 @@ import type { SmsImportParseResult } from "@/lib/sms-import-batch";
 import {
   filterSmsBackupMessages,
   formatSmsPreview,
-  parseSmsBackupXml,
+  parseSmsBackupFile,
   type SmsBackupMessage,
 } from "@/lib/sms-backup-xml";
 import { SELLER_INPUT_CLASS } from "@/lib/seller-ui";
@@ -52,6 +52,7 @@ export default function SmsImportWizard() {
   const [allMessages, setAllMessages] = useState<SmsBackupMessage[]>([]);
   const [parseStats, setParseStats] = useState({ sms: 0, mms: 0 });
   const [fileLoading, setFileLoading] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
   const [parseError, setParseError] = useState("");
   const [receivedOnly, setReceivedOnly] = useState(true);
   const [orderLikeOnly, setOrderLikeOnly] = useState(true);
@@ -155,13 +156,13 @@ export default function SmsImportWizard() {
       setFileName(file.name);
       setParseError("");
       setFileLoading(true);
+      setLoadProgress(0);
       setAllMessages([]);
       setSelectedIds(new Set());
       resetParseState();
 
       try {
-        const text = await file.text();
-        const result = parseSmsBackupXml(text);
+        const result = await parseSmsBackupFile(file, setLoadProgress);
 
         if (result.messages.length === 0) {
           setParseError(
@@ -172,9 +173,12 @@ export default function SmsImportWizard() {
           setParseStats({ sms: result.smsCount, mms: result.mmsCount });
         }
       } catch {
-        setParseError("XML 파일을 읽는 중 오류가 났습니다.");
+        setParseError(
+          "XML 파일을 읽는 중 오류가 났습니다. 파일이 너무 크면 백업 시 SMS만 선택해 주세요."
+        );
       } finally {
         setFileLoading(false);
+        setLoadProgress(0);
       }
     },
     [resetParseState]
@@ -360,8 +364,17 @@ export default function SmsImportWizard() {
                 ) : (
                   <FileUp className="h-4 w-4" />
                 )}
-                {fileLoading ? "읽는 중…" : "XML 파일 선택"}
+                {fileLoading
+                  ? loadProgress > 0
+                    ? `읽는 중… ${loadProgress.toLocaleString()}건`
+                    : "읽는 중…"
+                  : "XML 파일 선택"}
               </label>
+              {fileLoading && (
+                <p className="mt-2 text-xs text-slate-500">
+                  큰 파일은 MMS 이미지를 건너뛰고 SMS만 읽습니다.
+                </p>
+              )}
               {fileName && !fileLoading && (
                 <p className="mt-3 text-sm font-medium text-slate-700">
                   선택됨: {fileName}
