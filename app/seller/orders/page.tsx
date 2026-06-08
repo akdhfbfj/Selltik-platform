@@ -17,6 +17,7 @@ import { sumCelticDeposit } from "@/lib/export-order-xlsx";
 import { findDuplicateOrders } from "@/lib/order-duplicates";
 import { matchesOrderSearch } from "@/lib/order-search";
 import {
+  bundleLineToOrderPayload,
   emptyDraftLine,
   recalcAllDraftLines,
   recalcDraftLineItem,
@@ -29,7 +30,6 @@ import type {
   Order,
   OrderDraftBundle,
   OrderDraftLineItem,
-  OrderDraftPreview,
   OrderListTab,
   SellerProductView,
 } from "@/lib/types";
@@ -57,35 +57,6 @@ function todayIso(): string {
 function formatOrderDateLabel(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${y}년 ${Number(m)}월 ${Number(d)}일`;
-}
-
-function lineToOrderPayload(
-  bundle: OrderDraftBundle,
-  line: OrderDraftLineItem
-): OrderDraftPreview {
-  return {
-    customerOrderDate: bundle.customerOrderDate,
-    orderDate: bundle.orderDate,
-    productId: line.productId,
-    productName: line.productName,
-    quantity: line.quantity,
-    ordererName: bundle.ordererName,
-    recipientName: bundle.recipientName,
-    contactPhone: bundle.contactPhone,
-    contactPhone2: bundle.contactPhone2,
-    postalCode: bundle.postalCode,
-    address: bundle.address,
-    shippingMemo: bundle.shippingMemo,
-    purchasePrice: line.purchasePrice,
-    shippingFee: line.shippingFee,
-    supplyTotal: line.supplyTotal,
-    isRemoteArea: bundle.isRemoteArea,
-    rawSmsText: bundle.rawSmsText,
-    status: "draft",
-    productMatch: line.productMatch,
-    celticDepositAmount: line.celticDepositAmount,
-    autoParsed: bundle.autoParsed,
-  };
 }
 
 const STATUS_BADGE: Record<Order["status"], string> = {
@@ -414,7 +385,7 @@ export default function SellerOrdersPage() {
       const res = await fetch("/api/seller/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(lineToOrderPayload(draftBundle, line)),
+        body: JSON.stringify(bundleLineToOrderPayload(draftBundle, line)),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -678,14 +649,7 @@ export default function SellerOrdersPage() {
   return (
     <>
       <Script src={KAKAO_POSTCODE_SCRIPT} strategy="afterInteractive" />
-      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-slate-900">② 답장 · 발주</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            고객 답장 분석 → 저장 → 입금확인 → xlsx 출력
-          </p>
-        </div>
-
+      <div>
         <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50/30 p-6 shadow-sm">
           <h3 className="mb-1 flex items-center gap-2 font-semibold text-slate-900">
             <ClipboardPaste className="h-5 w-5 text-emerald-600" />

@@ -64,10 +64,13 @@ function todayIso(): string {
 export async function buildOrderDraftBundle(
   shopId: string,
   parsed: ParsedOrderSms,
-  rawSmsText: string
+  rawSmsText: string,
+  options?: { customerOrderDate?: string; orderDate?: string }
 ): Promise<OrderDraftBundle> {
   const products = await getSellerProductViews(shopId);
   const today = todayIso();
+  const customerOrderDate = options?.customerOrderDate?.slice(0, 10) || today;
+  const orderDate = options?.orderDate?.slice(0, 10) || today;
   const productLines = parseProductLinesFromSms(rawSmsText, parsed);
 
   const lines = productLines.map((pl) =>
@@ -82,8 +85,8 @@ export async function buildOrderDraftBundle(
   );
 
   return {
-    customerOrderDate: today,
-    orderDate: today,
+    customerOrderDate,
+    orderDate,
     ordererName: parsed.ordererName,
     recipientName: parsed.recipientName || parsed.ordererName,
     contactPhone: parsed.contactPhone,

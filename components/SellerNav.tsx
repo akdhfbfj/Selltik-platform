@@ -31,6 +31,9 @@ const NAV_LINKS = [
 ] as const;
 
 function linkActive(pathname: string, href: string): boolean {
+  if (href === "/seller/orders") {
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
   return pathname === href;
 }
 

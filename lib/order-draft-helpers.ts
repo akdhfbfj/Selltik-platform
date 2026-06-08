@@ -1,6 +1,11 @@
 import { v4 as uuidv4 } from "uuid";
 import { calcOrderPricing } from "./order-pricing";
-import type { OrderDraftLineItem, SellerProductView } from "./types";
+import type {
+  OrderDraftBundle,
+  OrderDraftLineItem,
+  OrderDraftPreview,
+  SellerProductView,
+} from "./types";
 
 function normalizeName(s: string): string {
   return s.replace(/\s/g, "").toLowerCase();
@@ -160,5 +165,34 @@ export function emptyDraftLine(products: SellerProductView[]): OrderDraftLineIte
       matchedBy: "none",
       consumerPrice: 0,
     },
+  };
+}
+
+export function bundleLineToOrderPayload(
+  bundle: OrderDraftBundle,
+  line: OrderDraftLineItem
+): OrderDraftPreview {
+  return {
+    customerOrderDate: bundle.customerOrderDate,
+    orderDate: bundle.orderDate,
+    productId: line.productId,
+    productName: line.productName,
+    quantity: line.quantity,
+    ordererName: bundle.ordererName,
+    recipientName: bundle.recipientName,
+    contactPhone: bundle.contactPhone,
+    contactPhone2: bundle.contactPhone2,
+    postalCode: bundle.postalCode,
+    address: bundle.address,
+    shippingMemo: bundle.shippingMemo,
+    purchasePrice: line.purchasePrice,
+    shippingFee: line.shippingFee,
+    supplyTotal: line.supplyTotal,
+    isRemoteArea: bundle.isRemoteArea,
+    rawSmsText: bundle.rawSmsText,
+    status: "draft",
+    productMatch: line.productMatch,
+    celticDepositAmount: line.celticDepositAmount,
+    autoParsed: bundle.autoParsed,
   };
 }
