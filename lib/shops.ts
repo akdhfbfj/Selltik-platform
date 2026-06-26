@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
+import { cache } from "react";
 import type { Shop, ShopInput, ShopSmsSettings } from "./types";
 import { createServerClient } from "./supabase/server";
 
@@ -45,9 +46,9 @@ export async function getAllShops(): Promise<Shop[]> {
   return (data ?? []).map(rowToShop);
 }
 
-export async function getShopByAuthUserId(
+export const getShopByAuthUserId = cache(async (
   authUserId: string
-): Promise<Shop | null> {
+): Promise<Shop | null> => {
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from("shops")
@@ -56,7 +57,7 @@ export async function getShopByAuthUserId(
     .maybeSingle();
   if (error) throw error;
   return data ? rowToShop(data) : null;
-}
+});
 
 export async function getShopById(id: string): Promise<Shop | null> {
   const supabase = createServerClient();

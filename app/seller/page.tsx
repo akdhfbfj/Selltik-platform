@@ -1,7 +1,5 @@
 import { redirect } from "next/navigation";
-import { getRecommendationsByShopId } from "@/lib/db";
-import { getOrdersByShop } from "@/lib/orders";
-import { countPendingProductReviews } from "@/lib/products";
+import { getSellerDashboardStats } from "@/lib/seller-dashboard";
 import { getSellerSession } from "@/lib/supabase/server-auth";
 import { getShopByAuthUserId } from "@/lib/shops";
 import {
@@ -27,21 +25,7 @@ export default async function SellerHomePage() {
     redirect("/seller/login");
   }
 
-  const [orders, pendingReviewCount, recommendations] = await Promise.all([
-    getOrdersByShop(shop.id),
-    countPendingProductReviews(shop.id),
-    getRecommendationsByShopId(shop.id),
-  ]);
-
-  const orderDraft = orders.filter((o) => o.status === "draft").length;
-  const orderPaid = orders.filter((o) => o.status === "paid").length;
-  const orderExported = orders.filter((o) => o.status === "exported").length;
-  const recReviewing = recommendations.filter(
-    (r) => r.status === "new" || r.status === "reviewing"
-  ).length;
-
-  const today = new Date().toISOString().slice(0, 10);
-  const todayOrders = orders.filter((o) => o.orderDate === today).length;
+  const stats = await getSellerDashboardStats(shop.id);
 
   const cards = [
     {
@@ -52,7 +36,7 @@ export default async function SellerHomePage() {
       title: "신상품 추천",
       desc: "셀틱에 신상품 제안",
       badge:
-        recReviewing > 0 ? `검토중 ${recReviewing}건` : undefined,
+        stats.recReviewing > 0 ? `검토중 ${stats.recReviewing}건` : undefined,
     },
     {
       href: "/seller/products",
@@ -62,10 +46,10 @@ export default async function SellerHomePage() {
       title: "상품·공급가",
       desc: "판매가 · 문자 상품명",
       badge:
-        pendingReviewCount > 0
-          ? `확인 필요 ${pendingReviewCount}건`
+        stats.pendingReviewCount > 0
+          ? `확인 필요 ${stats.pendingReviewCount}건`
           : undefined,
-      badgeWarn: pendingReviewCount > 0,
+      badgeWarn: stats.pendingReviewCount > 0,
     },
     {
       href: "/seller/outbound-sms",
@@ -83,7 +67,7 @@ export default async function SellerHomePage() {
       title: "② 답장·발주",
       desc: "답장 분석 · xlsx 출력",
       badge:
-        orderPaid > 0 ? `발주 준비 ${orderPaid}건` : undefined,
+        stats.orderPaid > 0 ? `발주 준비 ${stats.orderPaid}건` : undefined,
     },
   ];
 
@@ -94,13 +78,16 @@ export default async function SellerHomePage() {
           안녕하세요, {shop.name}
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          오늘 발주일 기준 {todayOrders}건 · 전체 발주 {orders.length}건
+          오늘 발주일 기준 {stats.todayOrders}건 · 전체 발주{" "}
+          {stats.orderTotal}건
         </p>
       </div>
 
-      {(orderDraft > 0 || orderPaid > 0 || pendingReviewCount > 0) && (
+      {(stats.orderDraft > 0 ||
+        stats.orderPaid > 0 ||
+        stats.pendingReviewCount > 0) && (
         <div className="mb-6 grid gap-3 sm:grid-cols-3">
-          {orderDraft > 0 && (
+          {stats.orderDraft > 0 && (
             <Link
               href="/seller/orders"
               className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm hover:bg-amber-100/80"
@@ -108,13 +95,13 @@ export default async function SellerHomePage() {
               <Banknote className="h-5 w-5 shrink-0 text-amber-600" />
               <div>
                 <p className="font-semibold text-amber-900">
-                  입금 대기 {orderDraft}건
+                  입금 대기 {stats.orderDraft}건
                 </p>
                 <p className="text-xs text-amber-700">입금확인 후 발주 준비</p>
               </div>
             </Link>
           )}
-          {orderPaid > 0 && (
+          {stats.orderPaid > 0 && (
             <Link
               href="/seller/orders"
               className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm hover:bg-emerald-100/80"
@@ -122,13 +109,13 @@ export default async function SellerHomePage() {
               <Download className="h-5 w-5 shrink-0 text-emerald-600" />
               <div>
                 <p className="font-semibold text-emerald-900">
-                  발주 준비 {orderPaid}건
+                  발주 준비 {stats.orderPaid}건
                 </p>
                 <p className="text-xs text-emerald-700">xlsx 다운로드 가능</p>
               </div>
             </Link>
           )}
-          {pendingReviewCount > 0 && (
+          {stats.pendingReviewCount > 0 && (
             <Link
               href="/seller/products"
               className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm hover:bg-amber-100/80"
@@ -136,7 +123,7 @@ export default async function SellerHomePage() {
               <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
               <div>
                 <p className="font-semibold text-amber-900">
-                  공급가 변경 {pendingReviewCount}건
+                  공급가 변경 {stats.pendingReviewCount}건
                 </p>
                 <p className="text-xs text-amber-700">상품·공급가에서 확인</p>
               </div>
@@ -164,9 +151,9 @@ export default async function SellerHomePage() {
             xlsx 다운로드
           </span>
         </div>
-        {orderExported > 0 && (
+        {stats.orderExported > 0 && (
           <p className="mt-3 text-xs text-slate-500">
-            다운로드 완료 {orderExported}건
+            다운로드 완료 {stats.orderExported}건
           </p>
         )}
       </div>
@@ -195,7 +182,6 @@ export default async function SellerHomePage() {
           </Link>
         ))}
       </div>
-
     </div>
   );
 }

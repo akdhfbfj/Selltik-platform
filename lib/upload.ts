@@ -45,3 +45,63 @@ export async function deleteUploadedFile(imageUrl: string) {
 export async function deleteContactImages(imagePaths: string[]) {
   await Promise.all(imagePaths.map(deleteUploadedFile));
 }
+
+const XLSX_MIME =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const XLS_MIME = "application/vnd.ms-excel";
+
+export async function saveProposalFile(
+  file: File,
+  contactId: string
+): Promise<{ storagePath: string; publicUrl: string }> {
+  const supabase = createServerClient();
+  const ext = path.extname(file.name).toLowerCase() || ".xlsx";
+  const storagePath = `proposals/${contactId}/${uuidv4()}${ext}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  let contentType = file.type;
+  if (!contentType) {
+    if (ext === ".xls") contentType = XLS_MIME;
+    else if (ext === ".xlsx") contentType = XLSX_MIME;
+    else contentType = "application/octet-stream";
+  }
+
+  const { error } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .upload(storagePath, buffer, {
+      contentType,
+      upsert: false,
+    });
+
+  if (error) throw error;
+
+  const { data } = supabase.storage
+    .from(STORAGE_BUCKET)
+    .getPublicUrl(storagePath);
+
+  return { storagePath, publicUrl: data.publicUrl };
+}
+
+export async function downloadStorageFile(
+  storagePath: string
+): Promise<{ buffer: Buffer; contentType: string }> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .download(storagePath);
+
+  if (error || !data) throw error ?? new Error("파일을 찾을 수 없습니다.");
+
+  const buffer = Buffer.from(await data.arrayBuffer());
+  const ext = path.extname(storagePath).toLowerCase();
+  let contentType = "application/octet-stream";
+  if (ext === ".xlsx") contentType = XLSX_MIME;
+  else if (ext === ".xls") contentType = XLS_MIME;
+
+  return { buffer, contentType };
+}
+
+export async function deleteStorageFile(storagePath: string) {
+  const supabase = createServerClient();
+  await supabase.storage.from(STORAGE_BUCKET).remove([storagePath]);
+}

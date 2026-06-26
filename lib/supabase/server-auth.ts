@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { getSupabaseAnonKey, getSupabaseUrl } from "./env";
 
 export async function createAuthServerClient() {
@@ -23,10 +24,10 @@ export async function createAuthServerClient() {
   });
 }
 
-export async function getSellerSession() {
+export const getSellerSession = cache(async () => {
   const supabase = await createAuthServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   return user;
-}
+});

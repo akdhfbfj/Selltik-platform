@@ -145,6 +145,42 @@ export interface ContactActivity {
   createdAt: string;
 }
 
+export interface VendorProposal {
+  id: string;
+  contactId: string;
+  fileName: string;
+  filePath: string;
+  notes: string;
+  curatedCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VendorProposalInput {
+  fileName: string;
+  filePath: string;
+  notes?: string;
+}
+
+export type CuratedItemStatus = "draft" | "ready" | "shared";
+
+export interface CuratedItem {
+  id: string;
+  proposalId: string;
+  contactId: string;
+  productName: string;
+  imageUrl: string;
+  detailImageUrl: string;
+  celticPurchase: number;
+  sellerSupply: number;
+  tiktokPrice: number;
+  adminNote: string;
+  status: CuratedItemStatus;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ContactActivityInput {
   content: string;
   author?: string;

@@ -109,6 +109,12 @@ export default function SellerOutboundSmsPage() {
     return composeOutboundSms(smsHeader, body, smsFooter);
   }, [smsHeader, smsFooter, cartItems, outboundRemoteArea]);
 
+  const [previewText, setPreviewText] = useState("");
+
+  useEffect(() => {
+    setPreviewText(outboundPreview);
+  }, [outboundPreview]);
+
   const addToCart = () => {
     if (!addProductId) return;
     setCart((prev) => {
@@ -160,8 +166,10 @@ export default function SellerOutboundSmsPage() {
   };
 
   const handleCopyOutbound = async () => {
+    const text = previewText.trim();
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(outboundPreview);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -407,19 +415,31 @@ export default function SellerOutboundSmsPage() {
 
           <div className="space-y-3 md:sticky md:top-4 md:self-start">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">
-                미리보기 (복사해서 문자 앱에 붙여넣기)
-              </label>
-              <pre className="min-h-[240px] whitespace-pre-wrap rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-800">
-                {outboundPreview.trim()
-                  ? outboundPreview
-                  : "상·하단 문구를 저장하거나 상품을 담으면 미리보기가 표시됩니다."}
-              </pre>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <label className="text-xs font-medium text-slate-600">
+                  미리보기 (직접 수정 가능 · 복사해서 문자 앱에 붙여넣기)
+                </label>
+                {previewText !== outboundPreview && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewText(outboundPreview)}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                  >
+                    자동 생성으로 되돌리기
+                  </button>
+                )}
+              </div>
+              <textarea
+                className={`${SELLER_INPUT_CLASS} min-h-[240px] resize-y bg-white font-sans text-sm leading-relaxed text-slate-800`}
+                value={previewText}
+                onChange={(e) => setPreviewText(e.target.value)}
+                placeholder="상·하단 문구를 저장하거나 상품을 담으면 미리보기가 표시됩니다."
+              />
             </div>
             <button
               type="button"
               onClick={handleCopyOutbound}
-              disabled={!outboundPreview.trim()}
+              disabled={!previewText.trim()}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
             >
               {copied ? (

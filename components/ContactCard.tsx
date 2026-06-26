@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import ActivityLog from "@/components/ActivityLog";
+import ContactProposals from "@/components/ContactProposals";
 
 interface Props {
   contact: Contact;
@@ -200,6 +201,8 @@ export default function ContactCard({
             ))}
           </div>
         )}
+
+        <ContactProposals contactId={contact.id} />
 
         <ActivityLog contactId={contact.id} />
 
