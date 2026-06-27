@@ -29,6 +29,7 @@ create table if not exists master_products (
   profit_amount integer not null default 0,
   profit_rate text not null default '',
   sort_order integer not null default 0,
+  is_sold_out boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -55,6 +56,17 @@ create table if not exists seller_product_favorites (
 );
 
 create index if not exists idx_favorites_shop on seller_product_favorites(shop_id, created_at desc);
+
+create table if not exists seller_outbound_usage (
+  id text primary key,
+  shop_id text not null references shops(id) on delete cascade,
+  product_id text not null references master_products(id) on delete cascade,
+  last_used_at timestamptz not null default now(),
+  unique (shop_id, product_id)
+);
+
+create index if not exists idx_outbound_usage_shop_recent
+  on seller_outbound_usage(shop_id, last_used_at desc);
 
 create table if not exists seller_product_reviews (
   id text primary key,

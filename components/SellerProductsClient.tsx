@@ -372,7 +372,7 @@ export default function SellerProductsClient({
         <h2 className="text-2xl font-bold text-slate-900">상품·공급가</h2>
         <p className="mt-1 text-sm text-slate-500">
           SKU는 본인만 설정합니다. ★ 인기 상품은 안내 문자 검색 상단에
-          먼저 표시됩니다. 기본 목록은 출시 순(공급가표와 동일)입니다.
+          먼저 표시됩니다. 품절 상품은 회색으로 표시됩니다.
         </p>
         {pendingReviewCount > 0 && (
           <button
@@ -555,15 +555,23 @@ export default function SellerProductsClient({
                   const changes = p.needsReview ? describeProductChanges(p) : [];
                   const composition = extractProductComposition(p.description);
                   const review = p.needsReview;
+                  const soldOut = p.isSoldOut;
+                  const soldOutCell = soldOut
+                    ? "bg-slate-100/90 text-slate-500"
+                    : "";
                   return (
                     <tr
                       key={p.id}
                       ref={(el) => {
                         productRefs.current[p.id] = el;
                       }}
-                      className="group align-middle"
+                      className={`group align-middle ${soldOut ? "opacity-80" : ""}`}
                     >
-                      <td className="align-middle border border-slate-300 bg-amber-50/50 px-1 py-1.5 text-center first:rounded-l-lg">
+                      <td
+                        className={`align-middle border border-slate-300 px-1 py-1.5 text-center first:rounded-l-lg ${
+                          soldOut ? "bg-slate-100/90" : "bg-amber-50/50"
+                        }`}
+                      >
                         <button
                           type="button"
                           onClick={() =>
@@ -595,7 +603,9 @@ export default function SellerProductsClient({
                         className={`align-middle border border-l-0 border-slate-300 px-2 py-1.5 ${
                           review
                             ? "bg-amber-50 ring-1 ring-inset ring-amber-200"
-                            : "bg-sky-50/90 group-hover:bg-sky-100/80"
+                            : soldOut
+                              ? soldOutCell
+                              : "bg-sky-50/90 group-hover:bg-sky-100/80"
                         }`}
                       >
                         <div className="flex min-w-0 items-center gap-1">
@@ -636,9 +646,24 @@ export default function SellerProductsClient({
                           </div>
                         )}
                       </td>
-                      <td className="align-middle border border-l-0 border-slate-300 bg-slate-50/95 px-2 py-1.5 group-hover:bg-slate-100/90">
-                        <p className="break-words text-xs leading-snug text-slate-700">
+                      <td
+                        className={`align-middle border border-l-0 border-slate-300 px-2 py-1.5 ${
+                          soldOut
+                            ? soldOutCell
+                            : "bg-slate-50/95 group-hover:bg-slate-100/90"
+                        }`}
+                      >
+                        <p
+                          className={`break-words text-xs leading-snug ${
+                            soldOut ? "text-slate-500" : "text-slate-700"
+                          }`}
+                        >
                           {p.officialName}
+                          {soldOut && (
+                            <span className="ml-1.5 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                              품절
+                            </span>
+                          )}
                         </p>
                         {composition ? (
                           <p className="mt-0.5 break-words text-[10px] leading-snug text-slate-400">
@@ -646,16 +671,40 @@ export default function SellerProductsClient({
                           </p>
                         ) : null}
                       </td>
-                      <td className="whitespace-nowrap align-middle border border-l-0 border-slate-300 bg-slate-50/80 px-2 py-1.5 text-right text-[11px] tabular-nums text-slate-600">
+                      <td
+                        className={`whitespace-nowrap align-middle border border-l-0 border-slate-300 px-2 py-1.5 text-right text-[11px] tabular-nums ${
+                          soldOut
+                            ? `${soldOutCell} text-slate-500`
+                            : "bg-slate-50/80 text-slate-600"
+                        }`}
+                      >
                         {formatKrw(p.purchasePrice)}
                       </td>
-                      <td className="whitespace-nowrap align-middle border border-l-0 border-slate-300 bg-emerald-50/70 px-2 py-1.5 text-right text-[11px] font-semibold tabular-nums text-emerald-800">
+                      <td
+                        className={`whitespace-nowrap align-middle border border-l-0 border-slate-300 px-2 py-1.5 text-right text-[11px] font-semibold tabular-nums ${
+                          soldOut
+                            ? `${soldOutCell} text-slate-500`
+                            : "bg-emerald-50/70 text-emerald-800"
+                        }`}
+                      >
                         {formatKrw(p.consumerPrice)}
                       </td>
-                      <td className="whitespace-nowrap align-middle border border-l-0 border-slate-300 bg-blue-50/60 px-2 py-1.5 text-right text-[11px] font-medium tabular-nums text-blue-800">
+                      <td
+                        className={`whitespace-nowrap align-middle border border-l-0 border-slate-300 px-2 py-1.5 text-right text-[11px] font-medium tabular-nums ${
+                          soldOut
+                            ? `${soldOutCell} text-slate-500`
+                            : "bg-blue-50/60 text-blue-800"
+                        }`}
+                      >
                         {formatKrw(p.profitAmount)}
                       </td>
-                      <td className="whitespace-nowrap align-middle border border-l-0 border-slate-300 bg-violet-50/60 px-2 py-1.5 text-right text-[11px] tabular-nums text-violet-800 last:rounded-r-lg">
+                      <td
+                        className={`whitespace-nowrap align-middle border border-l-0 border-slate-300 px-2 py-1.5 text-right text-[11px] tabular-nums last:rounded-r-lg ${
+                          soldOut
+                            ? `${soldOutCell} text-slate-500`
+                            : "bg-violet-50/60 text-violet-800"
+                        }`}
+                      >
                         {p.profitRate || "—"}
                       </td>
                     </tr>

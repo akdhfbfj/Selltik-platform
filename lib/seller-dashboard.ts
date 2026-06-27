@@ -67,7 +67,16 @@ export async function getSellerDashboardStats(
   throwIf(orderPaidRes.error);
   throwIf(orderExportedRes.error);
   throwIf(todayOrdersRes.error);
-  throwIf(recReviewingRes.error);
+
+  let recReviewing = 0;
+  if (recReviewingRes.error) {
+    const msg = recReviewingRes.error.message ?? "";
+    if (!msg.includes("recommendations") || !msg.includes("does not exist")) {
+      throw recReviewingRes.error;
+    }
+  } else {
+    recReviewing = recReviewingRes.count ?? 0;
+  }
 
   return {
     orderTotal: orderTotalRes.count ?? 0,
@@ -76,6 +85,6 @@ export async function getSellerDashboardStats(
     orderExported: orderExportedRes.count ?? 0,
     todayOrders: todayOrdersRes.count ?? 0,
     pendingReviewCount,
-    recReviewing: recReviewingRes.count ?? 0,
+    recReviewing,
   };
 }

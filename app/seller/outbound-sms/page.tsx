@@ -115,8 +115,25 @@ export default function SellerOutboundSmsPage() {
     setPreviewText(outboundPreview);
   }, [outboundPreview]);
 
+  const bumpOutboundUsage = useCallback(async (productIds: string[]) => {
+    if (productIds.length === 0) return;
+    const now = new Date().toISOString();
+    setProducts((prev) => {
+      const idSet = new Set(productIds);
+      return prev.map((p) =>
+        idSet.has(p.id) ? { ...p, lastOutboundAt: now } : p
+      );
+    });
+    await fetch("/api/seller/products/outbound-usage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productIds }),
+    });
+  }, []);
+
   const addToCart = () => {
     if (!addProductId) return;
+    void bumpOutboundUsage([addProductId]);
     setCart((prev) => {
       const idx = prev.findIndex((l) => l.productId === addProductId);
       if (idx >= 0) {
@@ -170,6 +187,7 @@ export default function SellerOutboundSmsPage() {
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
+      void bumpOutboundUsage(cart.map((line) => line.productId));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -292,7 +310,7 @@ export default function SellerOutboundSmsPage() {
             <div className="flex flex-wrap items-end gap-2">
               <div className="min-w-[200px] flex-1">
                 <label className="mb-1 block text-xs font-medium text-slate-600">
-                  상품 검색 (본문) — ★ 인기 상품 우선
+                  상품 검색 (본문) — ★ 인기 · 최근 안내 우선
                 </label>
                 <ProductSearchInput
                   products={products}

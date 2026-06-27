@@ -20,6 +20,7 @@ export default function AdminProductsPage() {
   const [uploading, setUploading] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [togglingSoldOutId, setTogglingSoldOutId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [query, setQuery] = useState("");
@@ -87,6 +88,7 @@ export default function AdminProductsPage() {
       consumerPrice: p.consumerPrice,
       profitAmount: p.profitAmount,
       profitRate: p.profitRate,
+      isSoldOut: p.isSoldOut,
     });
     setShowForm(true);
     setError("");
@@ -164,6 +166,35 @@ export default function AdminProductsPage() {
       loadProducts();
     }
     setDeletingAll(false);
+  };
+
+  const handleToggleSoldOut = async (p: MasterProduct) => {
+    const next = !p.isSoldOut;
+    const ok = confirm(
+      next
+        ? `「${p.officialName}」을(를) 품절 처리할까요?\n\n셀러에게 확인 요청이 전달됩니다.`
+        : `「${p.officialName}」 품절을 해제할까요?\n\n셀러에게 확인 요청이 전달됩니다.`
+    );
+    if (!ok) return;
+
+    setTogglingSoldOutId(p.id);
+    setError("");
+    setSuccess("");
+
+    const res = await fetch(`/api/admin/products/${p.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isSoldOut: next }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data.error || "품절 상태 변경에 실패했습니다.");
+    } else {
+      setSuccess(next ? "품절 처리되었습니다." : "품절이 해제되었습니다.");
+      loadProducts();
+    }
+    setTogglingSoldOutId(null);
   };
 
   const filtered = products.filter((p) =>
@@ -312,6 +343,19 @@ export default function AdminProductsPage() {
                   }
                 />
               </div>
+              <div className="flex items-end sm:col-span-2">
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300 text-red-600 focus:ring-red-200"
+                    checked={form.isSoldOut ?? false}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, isSoldOut: e.target.checked }))
+                    }
+                  />
+                  품절
+                </label>
+              </div>
             </div>
             <button
               type="submit"
@@ -378,14 +422,27 @@ export default function AdminProductsPage() {
                     <th className="pb-2 pr-4 font-medium">판매가</th>
                     <th className="pb-2 pr-4 font-medium">매입가</th>
                     <th className="pb-2 pr-4 font-medium">택배비</th>
+                    <th className="pb-2 pr-4 text-center font-medium">품절</th>
                     <th className="pb-2 font-medium"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {filtered.map((p) => (
-                    <tr key={p.id}>
-                      <td className="py-2.5 pr-4 font-medium text-slate-800">
+                    <tr
+                      key={p.id}
+                      className={p.isSoldOut ? "bg-slate-50/80" : undefined}
+                    >
+                      <td
+                        className={`py-2.5 pr-4 font-medium ${
+                          p.isSoldOut ? "text-slate-500" : "text-slate-800"
+                        }`}
+                      >
                         {p.officialName}
+                        {p.isSoldOut && (
+                          <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                            품절
+                          </span>
+                        )}
                       </td>
                       <td className="py-2.5 pr-4 text-slate-600">
                         {formatKrw(p.consumerPrice)}
@@ -395,6 +452,25 @@ export default function AdminProductsPage() {
                       </td>
                       <td className="py-2.5 pr-4 text-slate-500">
                         {formatKrw(p.baseShipping)}
+                      </td>
+                      <td className="py-2.5 pr-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSoldOut(p)}
+                          disabled={togglingSoldOutId === p.id}
+                          className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition disabled:opacity-50 ${
+                            p.isSoldOut
+                              ? "border-red-200 bg-red-50 text-red-700"
+                              : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                          }`}
+                          title={p.isSoldOut ? "품절 해제" : "품절 처리"}
+                        >
+                          {togglingSoldOutId === p.id
+                            ? "…"
+                            : p.isSoldOut
+                              ? "품절"
+                              : "판매"}
+                        </button>
                       </td>
                       <td className="py-2.5">
                         <div className="flex gap-1">

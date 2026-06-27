@@ -5,11 +5,25 @@ export const REVIEW_REASON_LABELS: Record<ProductReviewReason, string> = {
   new: "신규 등록",
   price_change: "공급가·판매가 변경",
   info_change: "상품 정보 변경",
+  sold_out: "품절",
 };
 
 export function describeProductChanges(p: SellerProductView): string[] {
   if (p.reviewReason === "new") {
     return ["셀틱에 새로 등록된 상품입니다. 판매가를 확인해 주세요."];
+  }
+
+  if (p.reviewReason === "sold_out") {
+    const prev = p.changeDetail?.previous?.isSoldOut;
+    if (prev === false && p.isSoldOut) {
+      return ["품절 처리되었습니다."];
+    }
+    if (prev === true && !p.isSoldOut) {
+      return ["품절이 해제되었습니다."];
+    }
+    return p.isSoldOut
+      ? ["품절 처리되었습니다."]
+      : ["품절 상태가 변경되었습니다."];
   }
 
   const prev = p.changeDetail?.previous;

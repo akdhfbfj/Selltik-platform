@@ -24,6 +24,7 @@ function rowToProduct(row: DbRow): MasterProduct {
     profitAmount: row.profit_amount as number,
     profitRate: row.profit_rate as string,
     sortOrder: row.sort_order as number,
+    isSoldOut: (row.is_sold_out as boolean | undefined) ?? false,
     updatedAt: row.updated_at as string,
   };
 }
@@ -42,6 +43,7 @@ function toDbRow(input: MasterProductInput, sortOrder: number, now: string) {
     profit_amount: profitAmount,
     profit_rate: input.profitRate?.trim() ?? "",
     sort_order: sortOrder,
+    is_sold_out: input.isSoldOut ?? false,
     updated_at: now,
   };
 }
@@ -56,6 +58,9 @@ export function formatDbError(error: { message?: string; code?: string }): strin
   }
   if (msg.includes("seller_product_favorites") && msg.includes("does not exist")) {
     return "DB 테이블이 없습니다. Supabase SQL Editor에서 011_seller_product_favorites.sql을 실행하세요.";
+  }
+  if (msg.includes("seller_outbound_usage") && msg.includes("does not exist")) {
+    return "DB 테이블이 없습니다. Supabase SQL Editor에서 013_seller_outbound_usage.sql을 실행하세요.";
   }
   if (error.code === "23505") {
     return "이미 같은 상품명이 있습니다.";
@@ -138,7 +143,8 @@ function masterInputDiffers(
     existing.supplyTotal !== supplyTotal ||
     existing.consumerPrice !== input.consumerPrice ||
     existing.profitAmount !== profitAmount ||
-    existing.profitRate !== (input.profitRate?.trim() ?? "")
+    existing.profitRate !== (input.profitRate?.trim() ?? "") ||
+    (input.isSoldOut !== undefined && existing.isSoldOut !== input.isSoldOut)
   );
 }
 
@@ -174,6 +180,7 @@ function buildChangeDetailFromProduct(
       baseShipping: product.baseShipping,
       supplyTotal: product.supplyTotal,
       consumerPrice: product.consumerPrice,
+      isSoldOut: product.isSoldOut,
     },
   };
 }
@@ -186,9 +193,16 @@ export function classifyProductReviewReason(
     consumerPrice: number;
     officialName?: string;
     description?: string;
+    isSoldOut?: boolean;
   }
 ): ProductReviewReason {
   if (!existing) return "new";
+  if (
+    next.isSoldOut !== undefined &&
+    existing.isSoldOut !== next.isSoldOut
+  ) {
+    return "sold_out";
+  }
   const priceChanged =
     existing.purchasePrice !== next.purchasePrice ||
     existing.baseShipping !== next.baseShipping ||
@@ -295,21 +309,60 @@ export async function updateMasterProduct(
 
   const supabase = createServerClient();
   const now = new Date().toISOString();
-  const changed = masterInputDiffers(existing, input);
+  const changed = masterInputDiffers(existing, {
+    ...input,
+    isSoldOut: input.isSoldOut ?? existing.isSoldOut,
+  });
   const { error } = await supabase
     .from("master_products")
-    .update(toDbRow(input, existing.sortOrder, now))
+    .update(
+      toDbRow(
+        { ...input, isSoldOut: input.isSoldOut ?? existing.isSoldOut },
+        existing.sortOrder,
+        now
+      )
+    )
     .eq("id", id);
   if (error) throw error;
   if (changed) {
     await flagProductsForSellerReview([
       {
         productId: id,
-        reason: classifyProductReviewReason(existing, input),
+        reason: classifyProductReviewReason(existing, {
+          ...input,
+          isSoldOut: input.isSoldOut ?? existing.isSoldOut,
+        }),
         changeDetail: buildChangeDetailFromProduct(existing),
       },
     ]);
   }
+  return getMasterProductById(id);
+}
+
+export async function setMasterProductSoldOut(
+  id: string,
+  isSoldOut: boolean
+): Promise<MasterProduct | null> {
+  const existing = await getMasterProductById(id);
+  if (!existing) return null;
+  if (existing.isSoldOut === isSoldOut) return existing;
+
+  const supabase = createServerClient();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("master_products")
+    .update({ is_sold_out: isSoldOut, updated_at: now })
+    .eq("id", id);
+  if (error) throw error;
+
+  await flagProductsForSellerReview([
+    {
+      productId: id,
+      reason: "sold_out",
+      changeDetail: buildChangeDetailFromProduct(existing),
+    },
+  ]);
+
   return getMasterProductById(id);
 }
 
@@ -402,6 +455,7 @@ export async function importSupplyProducts(
       profit_amount: item.profitAmount,
       profit_rate: item.profitRate,
       sort_order: item.sortOrder,
+      is_sold_out: existing?.isSoldOut ?? false,
       updated_at: now,
       created_at: meta?.created_at ?? now,
     };
@@ -435,6 +489,7 @@ export async function getSellerProductViews(
     { data: aliases, error: aliasError },
     { data: reviews, error: reviewError },
     { data: favorites, error: favoriteError },
+    { data: outboundUsage, error: outboundError },
   ] = await Promise.all([
     supabase.from("seller_product_aliases").select("*").eq("shop_id", shopId),
     supabase
@@ -445,6 +500,10 @@ export async function getSellerProductViews(
     supabase
       .from("seller_product_favorites")
       .select("product_id")
+      .eq("shop_id", shopId),
+    supabase
+      .from("seller_outbound_usage")
+      .select("product_id, last_used_at")
       .eq("shop_id", shopId),
   ]);
   if (aliasError) throw aliasError;
@@ -459,6 +518,21 @@ export async function getSellerProductViews(
   } else {
     for (const f of favorites ?? []) {
       favoriteSet.add(f.product_id as string);
+    }
+  }
+
+  const outboundMap = new Map<string, string>();
+  if (outboundError) {
+    const msg = outboundError.message ?? "";
+    if (
+      !msg.includes("seller_outbound_usage") ||
+      !msg.includes("does not exist")
+    ) {
+      throw outboundError;
+    }
+  } else {
+    for (const row of outboundUsage ?? []) {
+      outboundMap.set(row.product_id as string, row.last_used_at as string);
     }
   }
 
@@ -481,6 +555,7 @@ export async function getSellerProductViews(
       ...p,
       smsName: aliasMap.get(p.id) ?? "",
       isFavorite: favoriteSet.has(p.id),
+      lastOutboundAt: outboundMap.get(p.id) ?? null,
       needsReview: !!review,
       reviewReason: review?.reason,
       changeDetail: review?.detail,
@@ -521,6 +596,57 @@ export async function setSellerProductFavorite(
     .eq("shop_id", shopId)
     .eq("product_id", productId);
   if (error) throw error;
+}
+
+export async function recordOutboundProductUsage(
+  shopId: string,
+  productIds: string[]
+): Promise<void> {
+  const uniqueIds = [...new Set(productIds.filter(Boolean))];
+  if (uniqueIds.length === 0) return;
+
+  const supabase = createServerClient();
+  const now = new Date().toISOString();
+
+  const { data: existingRows, error: fetchError } = await supabase
+    .from("seller_outbound_usage")
+    .select("id, product_id")
+    .eq("shop_id", shopId)
+    .in("product_id", uniqueIds);
+  if (fetchError) throw fetchError;
+
+  const existingByProduct = new Map(
+    (existingRows ?? []).map((row) => [row.product_id as string, row.id as string])
+  );
+
+  const inserts: Record<string, unknown>[] = [];
+  const updateTasks: Array<() => Promise<void>> = [];
+
+  for (const productId of uniqueIds) {
+    const existingId = existingByProduct.get(productId);
+    if (existingId) {
+      updateTasks.push(async () => {
+        const { error } = await supabase
+          .from("seller_outbound_usage")
+          .update({ last_used_at: now })
+          .eq("id", existingId);
+        if (error) throw error;
+      });
+    } else {
+      inserts.push({
+        id: uuidv4(),
+        shop_id: shopId,
+        product_id: productId,
+        last_used_at: now,
+      });
+    }
+  }
+
+  await Promise.all(updateTasks.map((task) => task()));
+  if (inserts.length) {
+    const { error } = await supabase.from("seller_outbound_usage").insert(inserts);
+    if (error) throw error;
+  }
 }
 
 export async function countPendingProductReviews(shopId: string): Promise<number> {
