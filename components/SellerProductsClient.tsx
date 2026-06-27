@@ -6,19 +6,66 @@ import {
   REVIEW_REASON_LABELS,
 } from "@/lib/product-review-ui";
 import { formatKrw } from "@/lib/parse-supply-csv";
+import { extractProductComposition, parseProfitRate } from "@/lib/seller-ui";
 import type { SellerProductView } from "@/lib/types";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Check,
   ChevronRight,
   ListFilter,
   Loader2,
   Search,
+  Star,
 } from "lucide-react";
 
 interface Props {
   initialProducts: SellerProductView[];
   initialPendingCount: number;
+}
+
+type PriceSortKey = "consumerPrice" | "profitAmount" | "profitRate";
+type SortDir = "asc" | "desc";
+
+function SortablePriceHeader({
+  label,
+  sortKey,
+  activeSort,
+  onSort,
+  className = "",
+}: {
+  label: string;
+  sortKey: PriceSortKey;
+  activeSort: { key: PriceSortKey; dir: SortDir } | null;
+  onSort: (key: PriceSortKey) => void;
+  className?: string;
+}) {
+  const active = activeSort?.key === sortKey;
+  const dir = active ? activeSort.dir : null;
+  const SortIcon =
+    dir === "asc" ? ArrowUp : dir === "desc" ? ArrowDown : ArrowUpDown;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      className={`inline-flex w-full items-center justify-end gap-0.5 text-xs font-semibold hover:opacity-80 ${className}`}
+      title={
+        active
+          ? dir === "desc"
+            ? "높은 순 (클릭: 낮은 순)"
+            : "낮은 순 (클릭: 정렬 해제)"
+          : "클릭: 높은 순 정렬"
+      }
+    >
+      {label}
+      <SortIcon
+        className={`h-3 w-3 shrink-0 ${active ? "" : "opacity-40"}`}
+      />
+    </button>
+  );
 }
 
 function buildDraftMap(products: SellerProductView[]): Record<string, string> {
@@ -43,10 +90,15 @@ export default function SellerProductsClient({
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [ackingId, setAckingId] = useState<string | null>(null);
+  const [favoritingId, setFavoritingId] = useState<string | null>(null);
   const [bulkAcking, setBulkAcking] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [query, setQuery] = useState("");
+  const [priceSort, setPriceSort] = useState<{
+    key: PriceSortKey;
+    dir: SortDir;
+  } | null>(null);
   const productRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const modalShownRef = useRef(false);
 
@@ -119,6 +171,27 @@ export default function SellerProductsClient({
     setBulkAcking(false);
   };
 
+  const toggleFavorite = async (productId: string, next: boolean) => {
+    setFavoritingId(productId);
+    setError("");
+    const res = await fetch("/api/seller/products/favorites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId, favorite: next }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error || "인기 상품 설정에 실패했습니다.");
+    } else {
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === productId ? { ...p, isFavorite: next } : p
+        )
+      );
+    }
+    setFavoritingId(null);
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError("");
@@ -148,7 +221,7 @@ export default function SellerProductsClient({
       if (!res.ok) {
         setError(data.error || "저장에 실패했습니다.");
       } else {
-        setSuccess(`문자용 상품명 ${aliases.length}건이 저장되었습니다.`);
+        setSuccess(`SKU ${aliases.length}건이 저장되었습니다.`);
         setProducts(data.products);
         setDrafts(buildDraftMap(data.products));
       }
@@ -162,11 +235,54 @@ export default function SellerProductsClient({
   const filtered = products.filter((p) => {
     if (showPendingOnly && !p.needsReview) return false;
     const q = query.toLowerCase();
+    const composition = extractProductComposition(p.description).toLowerCase();
     return (
       p.officialName.toLowerCase().includes(q) ||
-      (drafts[p.id] ?? "").toLowerCase().includes(q)
+      (drafts[p.id] ?? "").toLowerCase().includes(q) ||
+      composition.includes(q)
     );
   });
+
+  const togglePriceSort = (key: PriceSortKey) => {
+    setPriceSort((prev) => {
+      if (prev?.key !== key) return { key, dir: "desc" };
+      if (prev.dir === "desc") return { key, dir: "asc" };
+      return null;
+    });
+  };
+
+  const displayed = useMemo(() => {
+    const list = [...filtered];
+
+    if (!priceSort) {
+      return list.sort((a, b) => a.sortOrder - b.sortOrder);
+    }
+
+    const mul = priceSort.dir === "asc" ? 1 : -1;
+    list.sort((a, b) => {
+      const av =
+        priceSort.key === "profitRate"
+          ? parseProfitRate(a.profitRate)
+          : a[priceSort.key];
+      const bv =
+        priceSort.key === "profitRate"
+          ? parseProfitRate(b.profitRate)
+          : b[priceSort.key];
+      const diff = (av - bv) * mul;
+      return diff !== 0 ? diff : a.sortOrder - b.sortOrder;
+    });
+    return list;
+  }, [filtered, priceSort]);
+
+  const sortStatusLabel = priceSort
+    ? `${
+        priceSort.key === "consumerPrice"
+          ? "판매가"
+          : priceSort.key === "profitAmount"
+            ? "마진"
+            : "마진율"
+      } ${priceSort.dir === "desc" ? "높은 순" : "낮은 순"}`
+    : "출시 순";
 
   const inputClass =
     "w-full min-w-0 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100";
@@ -255,7 +371,8 @@ export default function SellerProductsClient({
       <div className="shrink-0 pb-4">
         <h2 className="text-2xl font-bold text-slate-900">상품·공급가</h2>
         <p className="mt-1 text-sm text-slate-500">
-          판매가는 고객 안내용입니다. 문자용 상품명은 본인만 설정합니다.
+          SKU는 본인만 설정합니다. ★ 인기 상품은 안내 문자 검색 상단에
+          먼저 표시됩니다. 기본 목록은 출시 순(공급가표와 동일)입니다.
         </p>
         {pendingReviewCount > 0 && (
           <button
@@ -275,7 +392,7 @@ export default function SellerProductsClient({
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               className={`${inputClass} bg-white pl-9`}
-              placeholder="상품명 검색"
+              placeholder="SKU·상품명 검색"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -354,90 +471,192 @@ export default function SellerProductsClient({
               : "검색 결과가 없습니다."}
           </p>
         ) : (
-          <div className="overflow-x-auto pb-4">
-            <table className="w-full min-w-[640px] border-collapse text-sm">
-              <thead className="sticky top-0 z-10 bg-slate-50">
-                <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
-                  <th className="px-2 py-2 font-medium">상품명</th>
-                  <th className="w-24 px-2 py-2 font-medium">판매가</th>
-                  <th className="min-w-[220px] px-2 py-2 font-medium">
-                    문자용 상품명
+          <>
+            <p className="mb-2 text-xs text-slate-500">
+              정렬:{" "}
+              <span
+                className={
+                  priceSort
+                    ? "font-medium text-emerald-700"
+                    : "font-medium text-slate-700"
+                }
+              >
+                {sortStatusLabel}
+              </span>
+              {priceSort && (
+                <button
+                  type="button"
+                  onClick={() => setPriceSort(null)}
+                  className="ml-2 text-emerald-600 underline hover:text-emerald-800"
+                >
+                  출시 순으로
+                </button>
+              )}
+            </p>
+            <div className="overflow-x-auto pb-4">
+            <table className="w-full min-w-[820px] table-fixed border-separate border-spacing-x-0 border-spacing-y-1.5 text-sm">
+              <colgroup>
+                <col className="w-[4%]" />
+                <col className="w-[12%]" />
+                <col className="w-[31%]" />
+                <col className="w-[11%]" />
+                <col className="w-[11%]" />
+                <col className="w-[13%]" />
+                <col className="w-[10%]" />
+              </colgroup>
+              <thead className="sticky top-0 z-10">
+                <tr>
+                  <th
+                    className="border border-slate-300 bg-amber-50 px-1 py-2 text-center text-xs font-semibold text-amber-700 first:rounded-l-lg"
+                    title="인기 상품"
+                  >
+                    ★
                   </th>
-                  <th className="w-20 px-2 py-2 text-center font-medium">
-                    확인
+                  <th className="border border-l-0 border-slate-300 bg-sky-100 px-2 py-2 text-left text-xs font-semibold text-sky-900">
+                    SKU
+                  </th>
+                  <th className="border border-l-0 border-slate-300 bg-slate-200/80 px-2 py-2 text-left text-xs font-semibold text-slate-700">
+                    상품명
+                  </th>
+                  <th className="border border-l-0 border-slate-300 bg-slate-100 px-2 py-2 text-right text-xs font-semibold text-slate-600">
+                    매입
+                  </th>
+                  <th className="border border-l-0 border-slate-300 bg-emerald-100/90 px-2 py-2 text-right">
+                    <SortablePriceHeader
+                      label="판매"
+                      sortKey="consumerPrice"
+                      activeSort={priceSort}
+                      onSort={togglePriceSort}
+                      className="text-emerald-900"
+                    />
+                  </th>
+                  <th className="border border-l-0 border-slate-300 bg-blue-50 px-2 py-2 text-right">
+                    <SortablePriceHeader
+                      label="마진"
+                      sortKey="profitAmount"
+                      activeSort={priceSort}
+                      onSort={togglePriceSort}
+                      className="text-blue-900"
+                    />
+                  </th>
+                  <th className="border border-l-0 border-slate-300 bg-violet-50 px-2 py-2 text-right last:rounded-r-lg">
+                    <SortablePriceHeader
+                      label="마진율"
+                      sortKey="profitRate"
+                      activeSort={priceSort}
+                      onSort={togglePriceSort}
+                      className="text-violet-900"
+                    />
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => {
+                {displayed.map((p) => {
                   const changes = p.needsReview ? describeProductChanges(p) : [];
+                  const composition = extractProductComposition(p.description);
+                  const review = p.needsReview;
                   return (
                     <tr
                       key={p.id}
                       ref={(el) => {
                         productRefs.current[p.id] = el;
                       }}
-                      className={`border-b border-slate-100 align-middle ${
-                        p.needsReview ? "bg-amber-50/60" : "bg-white"
-                      }`}
+                      className="group align-middle"
                     >
-                      <td className="px-2 py-2">
-                        <div className="flex min-w-0 items-start gap-2">
-                          {p.needsReview && (
-                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                      <td className="align-middle border border-slate-300 bg-amber-50/50 px-1 py-1.5 text-center first:rounded-l-lg">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleFavorite(p.id, !p.isFavorite)
+                          }
+                          disabled={favoritingId === p.id}
+                          className="inline-flex items-center justify-center rounded p-1 text-amber-500 transition hover:bg-amber-100 hover:text-amber-600 disabled:opacity-50"
+                          title={
+                            p.isFavorite
+                              ? "인기 상품 해제"
+                              : "인기 상품으로 등록"
+                          }
+                          aria-pressed={p.isFavorite}
+                        >
+                          {favoritingId === p.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Star
+                              className={`h-4 w-4 ${
+                                p.isFavorite
+                                  ? "fill-amber-400 text-amber-500"
+                                  : "text-slate-300"
+                              }`}
+                            />
                           )}
-                          <div className="min-w-0">
-                            <p
-                              className="font-medium leading-snug text-slate-900"
-                              title={p.officialName}
-                            >
-                              {p.officialName}
-                            </p>
-                            {p.needsReview && (
-                              <p className="mt-0.5 text-xs font-medium text-amber-800">
-                                {REVIEW_REASON_LABELS[p.reviewReason ?? "price_change"]}
-                              </p>
-                            )}
-                            {changes.length > 0 && (
-                              <p className="mt-0.5 text-xs text-amber-900/80">
-                                {changes.join(" · ")}
-                              </p>
-                            )}
-                          </div>
-                        </div>
+                        </button>
                       </td>
-                      <td className="whitespace-nowrap px-2 py-2 font-semibold text-emerald-700">
+                      <td
+                        className={`align-middle border border-l-0 border-slate-300 px-2 py-1.5 ${
+                          review
+                            ? "bg-amber-50 ring-1 ring-inset ring-amber-200"
+                            : "bg-sky-50/90 group-hover:bg-sky-100/80"
+                        }`}
+                      >
+                        <div className="flex min-w-0 items-center gap-1">
+                          {review && (
+                            <span
+                              title={
+                                REVIEW_REASON_LABELS[p.reviewReason ?? "price_change"]
+                              }
+                            >
+                              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                            </span>
+                          )}
+                          <input
+                            className={`${inputClass} border-sky-200 bg-white py-1.5 text-xs font-medium text-slate-900 focus:border-sky-400 focus:ring-sky-100`}
+                            value={drafts[p.id] ?? ""}
+                            onChange={(e) =>
+                              setDrafts((d) => ({ ...d, [p.id]: e.target.value }))
+                            }
+                            placeholder="SKU"
+                            title="안내 문자·발주에 쓰는 SKU"
+                          />
+                        </div>
+                        {review && (
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            {changes.length > 0 && (
+                              <span className="text-[10px] leading-snug text-amber-900/80">
+                                {changes.join(" · ")}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => acknowledgeProducts([p.id])}
+                              disabled={ackingId === p.id}
+                              className="text-[10px] font-semibold text-amber-700 underline hover:text-amber-900 disabled:opacity-60"
+                            >
+                              {ackingId === p.id ? "처리 중…" : "변경 확인"}
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td className="align-middle border border-l-0 border-slate-300 bg-slate-50/95 px-2 py-1.5 group-hover:bg-slate-100/90">
+                        <p className="break-words text-xs leading-snug text-slate-700">
+                          {p.officialName}
+                        </p>
+                        {composition ? (
+                          <p className="mt-0.5 break-words text-[10px] leading-snug text-slate-400">
+                            {composition}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="whitespace-nowrap align-middle border border-l-0 border-slate-300 bg-slate-50/80 px-2 py-1.5 text-right text-[11px] tabular-nums text-slate-600">
+                        {formatKrw(p.purchasePrice)}
+                      </td>
+                      <td className="whitespace-nowrap align-middle border border-l-0 border-slate-300 bg-emerald-50/70 px-2 py-1.5 text-right text-[11px] font-semibold tabular-nums text-emerald-800">
                         {formatKrw(p.consumerPrice)}
                       </td>
-                      <td className="px-2 py-2">
-                        <input
-                          className={inputClass}
-                          value={drafts[p.id] ?? ""}
-                          onChange={(e) =>
-                            setDrafts((d) => ({ ...d, [p.id]: e.target.value }))
-                          }
-                          placeholder={p.officialName}
-                          title="고객에게 보내는 이름"
-                        />
+                      <td className="whitespace-nowrap align-middle border border-l-0 border-slate-300 bg-blue-50/60 px-2 py-1.5 text-right text-[11px] font-medium tabular-nums text-blue-800">
+                        {formatKrw(p.profitAmount)}
                       </td>
-                      <td className="px-2 py-2 text-center">
-                        {p.needsReview ? (
-                          <button
-                            type="button"
-                            onClick={() => acknowledgeProducts([p.id])}
-                            disabled={ackingId === p.id}
-                            className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-60"
-                          >
-                            {ackingId === p.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Check className="h-3.5 w-3.5" />
-                            )}
-                            확인
-                          </button>
-                        ) : (
-                          <span className="text-xs text-slate-300">—</span>
-                        )}
+                      <td className="whitespace-nowrap align-middle border border-l-0 border-slate-300 bg-violet-50/60 px-2 py-1.5 text-right text-[11px] tabular-nums text-violet-800 last:rounded-r-lg">
+                        {p.profitRate || "—"}
                       </td>
                     </tr>
                   );
@@ -445,6 +664,7 @@ export default function SellerProductsClient({
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
     </div>

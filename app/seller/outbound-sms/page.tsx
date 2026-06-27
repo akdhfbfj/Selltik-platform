@@ -292,7 +292,7 @@ export default function SellerOutboundSmsPage() {
             <div className="flex flex-wrap items-end gap-2">
               <div className="min-w-[200px] flex-1">
                 <label className="mb-1 block text-xs font-medium text-slate-600">
-                  상품 검색 (본문)
+                  상품 검색 (본문) — ★ 인기 상품 우선
                 </label>
                 <ProductSearchInput
                   products={products}

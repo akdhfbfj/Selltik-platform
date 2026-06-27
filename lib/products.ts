@@ -54,6 +54,9 @@ export function formatDbError(error: { message?: string; code?: string }): strin
   if (msg.includes("seller_product_reviews") && msg.includes("does not exist")) {
     return "DB 테이블이 없습니다. Supabase SQL Editor에서 004_seller_product_reviews.sql을 실행하세요.";
   }
+  if (msg.includes("seller_product_favorites") && msg.includes("does not exist")) {
+    return "DB 테이블이 없습니다. Supabase SQL Editor에서 011_seller_product_favorites.sql을 실행하세요.";
+  }
   if (error.code === "23505") {
     return "이미 같은 상품명이 있습니다.";
   }
@@ -320,6 +323,17 @@ export async function deleteMasterProduct(id: string): Promise<boolean> {
   return (count ?? 0) > 0;
 }
 
+/** 공급가표 전체 초기화 — 재업로드 전 일괄 삭제용 */
+export async function deleteAllMasterProducts(): Promise<number> {
+  const supabase = createServerClient();
+  const { error, count } = await supabase
+    .from("master_products")
+    .delete({ count: "exact" })
+    .neq("id", "");
+  if (error) throw error;
+  return count ?? 0;
+}
+
 /** 같은 상품명은 마지막 행 기준 (CSV 중복·배치 upsert 오류 방지) */
 function dedupeSupplyProducts(items: ParsedSupplyProduct[]): ParsedSupplyProduct[] {
   const map = new Map<string, ParsedSupplyProduct>();
@@ -417,17 +431,36 @@ export async function getSellerProductViews(
 ): Promise<SellerProductView[]> {
   const products = await getAllMasterProducts();
   const supabase = createServerClient();
-  const [{ data: aliases, error: aliasError }, { data: reviews, error: reviewError }] =
-    await Promise.all([
-      supabase.from("seller_product_aliases").select("*").eq("shop_id", shopId),
-      supabase
-        .from("seller_product_reviews")
-        .select("product_id, review_reason, change_detail")
-        .eq("shop_id", shopId)
-        .eq("needs_review", true),
-    ]);
+  const [
+    { data: aliases, error: aliasError },
+    { data: reviews, error: reviewError },
+    { data: favorites, error: favoriteError },
+  ] = await Promise.all([
+    supabase.from("seller_product_aliases").select("*").eq("shop_id", shopId),
+    supabase
+      .from("seller_product_reviews")
+      .select("product_id, review_reason, change_detail")
+      .eq("shop_id", shopId)
+      .eq("needs_review", true),
+    supabase
+      .from("seller_product_favorites")
+      .select("product_id")
+      .eq("shop_id", shopId),
+  ]);
   if (aliasError) throw aliasError;
   if (reviewError) throw reviewError;
+
+  const favoriteSet = new Set<string>();
+  if (favoriteError) {
+    const msg = favoriteError.message ?? "";
+    if (!msg.includes("seller_product_favorites") || !msg.includes("does not exist")) {
+      throw favoriteError;
+    }
+  } else {
+    for (const f of favorites ?? []) {
+      favoriteSet.add(f.product_id as string);
+    }
+  }
 
   const aliasMap = new Map(
     (aliases ?? []).map((a) => [a.product_id as string, a.sms_name as string])
@@ -447,11 +480,47 @@ export async function getSellerProductViews(
     return {
       ...p,
       smsName: aliasMap.get(p.id) ?? "",
+      isFavorite: favoriteSet.has(p.id),
       needsReview: !!review,
       reviewReason: review?.reason,
       changeDetail: review?.detail,
     };
   });
+}
+
+export async function setSellerProductFavorite(
+  shopId: string,
+  productId: string,
+  favorite: boolean
+): Promise<void> {
+  const supabase = createServerClient();
+
+  if (favorite) {
+    const { data: existing, error: fetchError } = await supabase
+      .from("seller_product_favorites")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("product_id", productId)
+      .maybeSingle();
+    if (fetchError) throw fetchError;
+    if (existing) return;
+
+    const { error } = await supabase.from("seller_product_favorites").insert({
+      id: uuidv4(),
+      shop_id: shopId,
+      product_id: productId,
+      created_at: new Date().toISOString(),
+    });
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase
+    .from("seller_product_favorites")
+    .delete()
+    .eq("shop_id", shopId)
+    .eq("product_id", productId);
+  if (error) throw error;
 }
 
 export async function countPendingProductReviews(shopId: string): Promise<number> {

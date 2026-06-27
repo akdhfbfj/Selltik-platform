@@ -46,6 +46,16 @@ create table if not exists seller_product_aliases (
 create index if not exists idx_master_products_sort on master_products(sort_order);
 create index if not exists idx_aliases_shop_id on seller_product_aliases(shop_id);
 
+create table if not exists seller_product_favorites (
+  id text primary key,
+  shop_id text not null references shops(id) on delete cascade,
+  product_id text not null references master_products(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (shop_id, product_id)
+);
+
+create index if not exists idx_favorites_shop on seller_product_favorites(shop_id, created_at desc);
+
 create table if not exists seller_product_reviews (
   id text primary key,
   shop_id text not null references shops(id) on delete cascade,

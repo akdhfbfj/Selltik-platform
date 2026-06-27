@@ -18,6 +18,7 @@ export default function AdminProductsPage() {
   const [products, setProducts] = useState<MasterProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -138,6 +139,33 @@ export default function AdminProductsPage() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (products.length === 0) return;
+
+    const ok = confirm(
+      `등록된 상품 ${products.length}개를 모두 삭제할까요?\n\n` +
+        "· 셀러 SKU·즐겨찾기·확인 대기도 함께 삭제됩니다.\n" +
+        "· 발주 기록의 상품 연결은 해제됩니다.\n\n" +
+        "삭제 후 CSV를 새로 업로드할 수 있습니다."
+    );
+    if (!ok) return;
+
+    setDeletingAll(true);
+    setError("");
+    setSuccess("");
+
+    const res = await fetch("/api/admin/products", { method: "DELETE" });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data.error || "일괄 삭제에 실패했습니다.");
+    } else {
+      setSuccess(data.message || "모든 상품을 삭제했습니다.");
+      loadProducts();
+    }
+    setDeletingAll(false);
+  };
+
   const filtered = products.filter((p) =>
     p.officialName.toLowerCase().includes(query.toLowerCase())
   );
@@ -155,16 +183,18 @@ export default function AdminProductsPage() {
             공급가·상품 관리
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            CSV로 처음 일괄 등록하고, 이후 변경·추가는 여기서 직접 수정하세요.
+            CSV로 일괄 등록·갱신하고, 공급가표를 통째로 바꿀 때는 먼저 전체
+            삭제 후 다시 업로드하세요.
           </p>
         </div>
 
         <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-3 font-semibold text-slate-900">CSV 일괄 업로드</h3>
           <p className="mb-4 text-sm text-slate-500">
-            CSV는 기존 상품 가격·정보 <strong>갱신</strong>용입니다. 신규 상품은
-            아래 「상품 추가」로 등록하세요. 변경 시 셀러에게 확인 요청이
-            가며, 셀러의 문자용 상품명은 바뀌지 않습니다.
+            같은 상품명이 있으면 가격·정보를 <strong>갱신</strong>합니다. 공급가표
+            전체를 새로 올릴 때는 아래 「전체 삭제」로 비운 뒤 CSV를 업로드하세요.
+            변경 시 셀러에게 확인 요청이 가며, 셀러의 문자용 SKU는 바뀌지
+            않습니다.
           </p>
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700">
             {uploading ? (
@@ -306,6 +336,19 @@ export default function AdminProductsPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
+              <button
+                type="button"
+                onClick={handleDeleteAll}
+                disabled={deletingAll || products.length === 0}
+                className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deletingAll ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                전체 삭제
+              </button>
               <button
                 onClick={openAdd}
                 className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900"
