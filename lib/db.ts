@@ -319,6 +319,16 @@ export async function updateRecommendationStatus(
   return getRecommendationById(id);
 }
 
+export async function deleteRecommendation(id: string): Promise<boolean> {
+  const supabase = createServerClient();
+  const { error, count } = await supabase
+    .from("recommendations")
+    .delete({ count: "exact" })
+    .eq("id", id);
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
 export async function addRecommendationImage(
   id: string,
   imagePath: string

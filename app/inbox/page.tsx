@@ -46,6 +46,17 @@ export default function InboxPage() {
     fetchItems();
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("이 추천을 삭제할까요?")) return;
+    const res = await fetch(`/api/recommendations/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || "삭제에 실패했습니다.");
+      return;
+    }
+    fetchItems();
+  };
+
   const handleConvertSuccess = async () => {
     if (converting) {
       await fetch(`/api/recommendations/${converting.id}`, {
@@ -114,6 +125,7 @@ export default function InboxPage() {
                 item={item}
                 onStatusChange={handleStatusChange}
                 onConvert={setConverting}
+                onDelete={handleDelete}
               />
             ))}
           </div>

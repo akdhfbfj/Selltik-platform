@@ -224,6 +224,9 @@ export function formatOrderDbError(error: { message?: string }): string {
   if (msg.includes("customer_order_date")) {
     return "DB 컬럼이 없습니다. Supabase SQL Editor에서 008_order_customer_date.sql을 실행하세요.";
   }
+  if (msg.includes("hidden_from_admin")) {
+    return "DB 컬럼이 없습니다. Supabase SQL Editor에서 017_order_hidden_from_admin.sql을 실행하세요.";
+  }
   return msg || "DB 오류가 발생했습니다.";
 }
 
@@ -390,6 +393,20 @@ export async function deleteOrder(
     .eq("shop_id", shopId);
   if (error) throw error;
   return (count ?? 0) > 0;
+}
+
+/** 관리자 목록에서만 숨김 — 셀러 데이터는 유지 */
+export async function hideOrderFromAdmin(id: string): Promise<boolean> {
+  const supabase = createServerClient();
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("orders")
+    .update({ hidden_from_admin: true, updated_at: now })
+    .eq("id", id)
+    .eq("hidden_from_admin", false)
+    .select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
 }
 
 /** 수동 수정 시 가격 재계산 */

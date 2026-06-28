@@ -112,6 +112,7 @@ create table if not exists orders (
   raw_sms_text text not null default '',
   status text not null default 'draft',
   export_suffix text,
+  hidden_from_admin boolean not null default false,
 
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -119,6 +120,9 @@ create table if not exists orders (
 
 create index if not exists idx_orders_shop_id on orders(shop_id);
 create index if not exists idx_orders_shop_date on orders(shop_id, order_date desc);
+create index if not exists idx_orders_admin_visible
+  on orders (order_date desc)
+  where hidden_from_admin = false;
 
 -- ── 셀러 신상품 추천 ──
 create table if not exists recommendations (

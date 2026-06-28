@@ -88,3 +88,25 @@ export async function createShopWithAuthUser(
   if (error) throw error;
   return (await getShopById(id))!;
 }
+
+export async function deleteShop(id: string): Promise<boolean> {
+  const shop = await getShopById(id);
+  if (!shop) return false;
+
+  const supabase = createServerClient();
+  const { error, count } = await supabase
+    .from("shops")
+    .delete({ count: "exact" })
+    .eq("id", id);
+  if (error) throw error;
+  if ((count ?? 0) === 0) return false;
+
+  if (shop.authUserId) {
+    const { error: authError } = await supabase.auth.admin.deleteUser(
+      shop.authUserId
+    );
+    if (authError) throw authError;
+  }
+
+  return true;
+}

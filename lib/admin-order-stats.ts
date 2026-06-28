@@ -98,6 +98,7 @@ export async function getAdminOrderStats(
     .select(
       "id, shop_id, product_id, order_date, product_name, quantity, supply_total, celtic_deposit_amount, status, shops(name)"
     )
+    .eq("hidden_from_admin", false)
     .gte("order_date", from)
     .lte("order_date", to)
     .order("order_date", { ascending: false });
@@ -201,6 +202,7 @@ export async function getAdminOrderList(
     .select(
       "id, shop_id, product_id, order_date, product_name, quantity, supply_total, celtic_deposit_amount, status, shops(name)"
     )
+    .eq("hidden_from_admin", false)
     .gte("order_date", from)
     .lte("order_date", to)
     .order("order_date", { ascending: false })

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { getShopById } from "@/lib/shops";
+import { deleteShop, getShopById } from "@/lib/shops";
 import { createServerClient } from "@/lib/supabase/server";
 
 type Params = { params: Promise<{ id: string }> };
@@ -41,5 +41,28 @@ export async function PATCH(request: Request, { params }: Params) {
     return NextResponse.json({ success: true, shopId: shop.id, shopName: shop.name });
   } catch {
     return NextResponse.json({ error: "비밀번호 변경에 실패했습니다." }, { status: 500 });
+  }
+}
+
+export async function DELETE(_request: Request, { params }: Params) {
+  if (!(await requireAuth())) {
+    return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  }
+
+  try {
+    const { id } = await params;
+    const shop = await getShopById(id);
+    if (!shop) {
+      return NextResponse.json({ error: "셀러를 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    const ok = await deleteShop(id);
+    if (!ok) {
+      return NextResponse.json({ error: "셀러 삭제에 실패했습니다." }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, shopName: shop.name });
+  } catch {
+    return NextResponse.json({ error: "셀러 삭제에 실패했습니다." }, { status: 500 });
   }
 }

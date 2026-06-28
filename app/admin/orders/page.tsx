@@ -8,7 +8,7 @@ import { currentMonthRange } from "@/lib/date-range";
 import { formatKrw } from "@/lib/parse-supply-csv";
 import { ORDER_STATUS_LABELS } from "@/lib/types";
 import type { Shop } from "@/lib/types";
-import { Loader2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 
 const STATUS_BADGE: Record<string, string> = {
   draft: "bg-amber-100 text-amber-800",
@@ -26,6 +26,7 @@ export default function AdminOrdersPage() {
   const [stats, setStats] = useState<AdminOrderStats | null>(null);
   const [orders, setOrders] = useState<AdminOrderRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/admin/shops")
@@ -54,6 +55,26 @@ export default function AdminOrdersPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleHideOrder = async (id: string, productName: string) => {
+    if (
+      !confirm(
+        `「${productName}」을(를) 관리자 목록에서 숨길까요?\n\n셀러 발주 목록에는 그대로 남습니다.`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(id);
+    const res = await fetch(`/api/admin/orders/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || "숨김 처리에 실패했습니다.");
+      setDeletingId(null);
+      return;
+    }
+    await loadData();
+    setDeletingId(null);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100">
@@ -146,6 +167,9 @@ export default function AdminOrdersPage() {
                     <th className="px-4 py-2 font-medium text-right">
                       순이익 추정
                     </th>
+                    <th className="w-16 px-4 py-2 text-center font-medium">
+                      숨김
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -177,6 +201,21 @@ export default function AdminOrdersPage() {
                         {o.customerSales > 0
                           ? formatKrw(o.sellerMargin)
                           : "-"}
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        <button
+                          type="button"
+                          disabled={deletingId === o.id}
+                          onClick={() => handleHideOrder(o.id, o.productName)}
+                          className="inline-flex rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                          title="관리자 목록에서 숨김"
+                        >
+                          {deletingId === o.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
                       </td>
                     </tr>
                   ))}

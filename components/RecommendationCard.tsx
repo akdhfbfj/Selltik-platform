@@ -5,19 +5,21 @@ import {
   RECOMMENDATION_STATUS_COLORS,
   RECOMMENDATION_STATUS_LABELS,
 } from "@/lib/types";
-import { ArrowRight, ExternalLink, Store, X } from "lucide-react";
+import { ArrowRight, ExternalLink, Store, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 interface Props {
   item: Recommendation;
   onStatusChange: (id: string, status: RecommendationStatus) => void;
   onConvert: (item: Recommendation) => void;
+  onDelete: (id: string) => void;
 }
 
 export default function RecommendationCard({
   item,
   onStatusChange,
   onConvert,
+  onDelete,
 }: Props) {
   const [showImages, setShowImages] = useState(false);
 
@@ -38,6 +40,14 @@ export default function RecommendationCard({
               </span>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => onDelete(item.id)}
+            className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+            title="삭제"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
           {item.images.length > 0 && (
             <button
               onClick={() => setShowImages(true)}

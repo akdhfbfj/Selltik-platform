@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import AdminNav from "@/components/AdminNav";
 import type { Shop } from "@/lib/types";
-import { KeyRound, Loader2, Plus, Store, Users } from "lucide-react";
+import { KeyRound, Loader2, Plus, Store, Trash2, Users } from "lucide-react";
 
 export default function AdminShopsPage() {
   const [shops, setShops] = useState<Shop[]>([]);
@@ -19,6 +19,7 @@ export default function AdminShopsPage() {
   const [resetShopId, setResetShopId] = useState<string | null>(null);
   const [tempPassword, setTempPassword] = useState("");
   const [resetting, setResetting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadShops = useCallback(async () => {
     setLoading(true);
@@ -80,6 +81,34 @@ export default function AdminShopsPage() {
       setTempPassword("");
     }
     setResetting(false);
+  };
+
+  const handleDeleteShop = async (shop: Shop) => {
+    if (
+      !confirm(
+        `「${shop.name}」 셀러 계정을 삭제할까요?\n\n발주·별칭 등 연결 데이터도 함께 삭제됩니다.`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(shop.id);
+    setError("");
+    setSuccess("");
+
+    const res = await fetch(`/api/admin/shops/${shop.id}`, { method: "DELETE" });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data.error || "셀러 삭제에 실패했습니다.");
+    } else {
+      setSuccess(`${shop.name} 셀러 계정이 삭제되었습니다.`);
+      if (resetShopId === shop.id) {
+        setResetShopId(null);
+        setTempPassword("");
+      }
+      loadShops();
+    }
+    setDeletingId(null);
   };
 
   const inputClass =
@@ -246,18 +275,33 @@ export default function AdminShopsPage() {
                         <p className="text-sm text-slate-500">{shop.contactEmail}</p>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setResetShopId(shop.id);
-                        setTempPassword("");
-                        setError("");
-                        setSuccess("");
-                      }}
-                      className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
-                    >
-                      임시 PW
-                    </button>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setResetShopId(shop.id);
+                          setTempPassword("");
+                          setError("");
+                          setSuccess("");
+                        }}
+                        className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                      >
+                        임시 PW
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingId === shop.id}
+                        onClick={() => handleDeleteShop(shop)}
+                        className="rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-red-600 hover:bg-red-100 disabled:opacity-50"
+                        title="계정 삭제"
+                      >
+                        {deletingId === shop.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
