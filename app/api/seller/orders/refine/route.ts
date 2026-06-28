@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { buildOrderDraftBundle, formatOrderDbError } from "@/lib/orders";
+import { formatOrderDbError } from "@/lib/orders";
 import { getSellerProductViews } from "@/lib/products";
 import { refineOrderDraftBundle } from "@/lib/refine-order-draft";
-import { parseOrderSmsWithLearning } from "@/lib/sms-parse-learn";
 import { requireSellerShop } from "@/lib/seller";
+import type { OrderDraftBundle } from "@/lib/types";
 
 export async function POST(request: Request) {
   const shop = await requireSellerShop();
@@ -12,32 +12,21 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { text } = (await request.json()) as { text?: string };
-    if (!text?.trim()) {
+    const { bundle } = (await request.json()) as { bundle?: OrderDraftBundle };
+    if (!bundle?.lines?.length) {
       return NextResponse.json(
-        { error: "문자 내용을 붙여넣어 주세요." },
+        { error: "반영할 분석 결과가 없습니다." },
         { status: 400 }
       );
     }
 
-    const parsed = await parseOrderSmsWithLearning(text, shop.id);
-    const rawDraftBundle = await buildOrderDraftBundle(shop.id, parsed, text, {
-      rawOnly: true,
-    });
-
     const products = await getSellerProductViews(shop.id);
-    const { bundle: draftBundle, changes } = await refineOrderDraftBundle(
-      rawDraftBundle,
+    const { bundle: refined, changes } = await refineOrderDraftBundle(
+      bundle,
       products
     );
 
-    return NextResponse.json({
-      parsed,
-      rawDraftBundle,
-      draftBundle,
-      changes,
-      autoRefined: true,
-    });
+    return NextResponse.json({ draftBundle: refined, changes });
   } catch (e) {
     const err = e as { message?: string };
     return NextResponse.json(

@@ -1,11 +1,11 @@
-/** 발주 입력 기본 탭. 셀러가 XML에 익숙해지면 "import"로 변경 */
+/** 발주 입력 기본 탭 */
 export const ORDERS_DEFAULT_TAB = "paste" as const;
 
 export type OrdersInputTab = "paste" | "import";
 
 export const ORDERS_TAB_HREF: Record<OrdersInputTab, string> = {
-  paste: "/seller/orders",
-  import: "/seller/orders/import",
+  paste: "/seller/reply",
+  import: "/seller/reply/import",
 };
 
 export const ORDERS_TABS: {
@@ -16,12 +16,12 @@ export const ORDERS_TABS: {
   {
     id: "paste",
     label: "붙여넣기",
-    description: "문자·스크린샷으로 빠르게 1건 입력",
+    description: "문자·스크린샷으로 1건 분석",
   },
   {
     id: "import",
     label: "XML 가져오기",
-    description: "SMS Backup & Restore 백업 일괄 처리",
+    description: "기능 개발 중",
   },
 ];
 
@@ -55,19 +55,23 @@ export const SMS_IMPORT_STEPS = [
     id: "review",
     label: "확인·저장",
     title: "초안 검토 후 저장",
-    summary: "상품·수량·주소를 확인하고 저장합니다. 이후 발주 목록에서 입금·xlsx 처리합니다.",
+    summary:
+      "상품·수량·주소를 확인하고 저장합니다. 이후 발주 목록에서 입금·xlsx 처리합니다.",
   },
 ] as const;
 
 export type SmsImportStepId = (typeof SMS_IMPORT_STEPS)[number]["id"];
 
 export function ordersTabFromPath(pathname: string): OrdersInputTab {
-  if (pathname.startsWith("/seller/orders/import")) return "import";
+  if (pathname.startsWith("/seller/reply/import")) return "import";
   return "paste";
 }
 
 export function isOrdersPath(pathname: string): boolean {
   return (
-    pathname === "/seller/orders" || pathname.startsWith("/seller/orders/")
+    pathname === "/seller/orders" ||
+    pathname.startsWith("/seller/orders/") ||
+    pathname === "/seller/reply" ||
+    pathname.startsWith("/seller/reply/")
   );
 }

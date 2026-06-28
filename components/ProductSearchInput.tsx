@@ -12,6 +12,9 @@ interface Props {
   placeholder?: string;
   /** 변경 시 검색창 초기화 (장바구니 담기 후 등) */
   resetToken?: number;
+  /** 미선택 시 입력란에 표시할 분석·원문 상품명 */
+  seedQuery?: string;
+  onFocus?: () => void;
 }
 
 function recentScore(lastOutboundAt?: string | null): number {
@@ -34,16 +37,21 @@ export default function ProductSearchInput({
   onChange,
   placeholder = "SKU·상품명 검색",
   resetToken = 0,
+  seedQuery = "",
+  onFocus,
 }: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
   const selected = products.find((p) => p.id === value);
 
   useEffect(() => {
     setQuery("");
     setOpen(false);
+    setActiveIndex(0);
   }, [resetToken]);
 
   useEffect(() => {
@@ -53,9 +61,9 @@ export default function ProductSearchInput({
         : selected.officialName;
       setQuery(label);
     } else if (!value) {
-      setQuery("");
+      setQuery(seedQuery.trim());
     }
-  }, [selected, value]);
+  }, [selected, value, seedQuery]);
 
   const { favoriteItems, recentItems, otherItems, showSections } = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -99,6 +107,18 @@ export default function ProductSearchInput({
   const hasResults = flatItems.length > 0;
 
   useEffect(() => {
+    setActiveIndex(0);
+  }, [query, flatItems.length]);
+
+  useEffect(() => {
+    if (!open || !hasResults) return;
+    const el = listRef.current?.querySelector(
+      `[data-picker-index="${activeIndex}"]`
+    );
+    el?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, open, hasResults]);
+
+  useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     };
@@ -106,49 +126,83 @@ export default function ProductSearchInput({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
+  const selectProduct = (p: SellerProductView) => {
+    onChange(p.id);
+    setOpen(false);
+    setActiveIndex(0);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open || !hasResults) {
+      if (e.key === "ArrowDown" && hasResults) {
+        setOpen(true);
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % flatItems.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => (i - 1 + flatItems.length) % flatItems.length);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const picked = flatItems[activeIndex];
+      if (picked) selectProduct(picked);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+    }
+  };
+
   const inputClass =
     "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100";
 
-  const renderItem = (p: SellerProductView) => (
-    <li key={p.id}>
-      <button
-        type="button"
-        className={`flex w-full items-start gap-2 px-3 py-2.5 text-left hover:bg-emerald-50 ${
-          p.isSoldOut ? "opacity-60" : ""
-        }`}
-        onClick={() => {
-          onChange(p.id);
-          setOpen(false);
-        }}
-      >
-        {p.isFavorite ? (
-          <Star className="mt-1 h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" />
-        ) : p.lastOutboundAt ? (
-          <Clock className="mt-1 h-3.5 w-3.5 shrink-0 text-blue-400" />
-        ) : (
-          <span className="mt-1 w-3.5 shrink-0" aria-hidden />
-        )}
-        <span className="min-w-0 flex-1">
-          <span className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-sm font-semibold text-slate-900">
-              {p.smsName.trim() || "SKU 미설정"}
-              {p.isSoldOut && (
-                <span className="ml-1.5 text-[10px] font-semibold text-slate-500">
-                  품절
-                </span>
-              )}
+  const renderItem = (p: SellerProductView, index: number) => {
+    const active = index === activeIndex;
+    return (
+      <li key={p.id} data-picker-index={index}>
+        <button
+          type="button"
+          className={`flex w-full items-start gap-2 px-3 py-2.5 text-left ${
+            active ? "bg-emerald-100" : "hover:bg-emerald-50"
+          } ${p.isSoldOut ? "opacity-60" : ""}`}
+          onMouseEnter={() => setActiveIndex(index)}
+          onClick={() => selectProduct(p)}
+        >
+          {p.isFavorite ? (
+            <Star className="mt-1 h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" />
+          ) : p.lastOutboundAt ? (
+            <Clock className="mt-1 h-3.5 w-3.5 shrink-0 text-blue-400" />
+          ) : (
+            <span className="mt-1 w-3.5 shrink-0" aria-hidden />
+          )}
+          <span className="min-w-0 flex-1">
+            <span className="flex items-baseline justify-between gap-2">
+              <span className="truncate text-sm font-semibold text-slate-900">
+                {p.smsName.trim() || "SKU 미설정"}
+                {p.isSoldOut && (
+                  <span className="ml-1.5 text-[10px] font-semibold text-slate-500">
+                    품절
+                  </span>
+                )}
+              </span>
+              <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">
+                {formatKrw(p.consumerPrice)}
+              </span>
             </span>
-            <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">
-              {formatKrw(p.consumerPrice)}
+            <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">
+              {p.officialName}
             </span>
           </span>
-          <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">
-            {p.officialName}
-          </span>
-        </span>
-      </button>
-    </li>
-  );
+        </button>
+      </li>
+    );
+  };
+
+  let itemIndex = 0;
 
   return (
     <div ref={wrapRef} className="relative">
@@ -157,15 +211,26 @@ export default function ProductSearchInput({
         className={`${inputClass} bg-white pl-9`}
         placeholder={placeholder}
         value={query}
+        role="combobox"
+        aria-expanded={open && hasResults}
+        aria-autocomplete="list"
         onChange={(e) => {
           setQuery(e.target.value);
           setOpen(true);
           if (!e.target.value.trim()) onChange("");
         }}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true);
+          onFocus?.();
+        }}
+        onKeyDown={handleKeyDown}
       />
       {open && hasResults && (
-        <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+        <ul
+          ref={listRef}
+          className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+          role="listbox"
+        >
           {showSections ? (
             <>
               {favoriteItems.length > 0 && (
@@ -173,7 +238,7 @@ export default function ProductSearchInput({
                   <li className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
                     인기 상품
                   </li>
-                  {favoriteItems.map(renderItem)}
+                  {favoriteItems.map((p) => renderItem(p, itemIndex++))}
                 </>
               )}
               {recentItems.length > 0 && (
@@ -187,7 +252,7 @@ export default function ProductSearchInput({
                   >
                     최근 안내
                   </li>
-                  {recentItems.map(renderItem)}
+                  {recentItems.map((p) => renderItem(p, itemIndex++))}
                 </>
               )}
               {otherItems.length > 0 && (
@@ -195,12 +260,12 @@ export default function ProductSearchInput({
                   <li className="mt-1 border-t border-slate-100 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                     전체 상품
                   </li>
-                  {otherItems.map(renderItem)}
+                  {otherItems.map((p) => renderItem(p, itemIndex++))}
                 </>
               )}
             </>
           ) : (
-            flatItems.map(renderItem)
+            flatItems.map((p, idx) => renderItem(p, idx))
           )}
         </ul>
       )}

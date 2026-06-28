@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
+import { cleanOcrProductName } from "./ocr-cleanup";
 import { calcOrderPricing } from "./order-pricing";
 import type {
   OrderDraftBundle,
@@ -8,7 +9,47 @@ import type {
 } from "./types";
 
 function normalizeName(s: string): string {
-  return s.replace(/\s/g, "").toLowerCase();
+  return cleanOcrProductName(s).replace(/\s/g, "").toLowerCase();
+}
+
+/** 셀러 SKU(smsName) 정확·포함 매칭 */
+export function matchProductBySku(
+  query: string,
+  products: SellerProductView[]
+): SellerProductView | null {
+  const q = query.trim().toLowerCase();
+  if (!q || q.length < 2) return null;
+
+  const exact = products.find(
+    (p) => p.smsName.trim().toLowerCase() === q
+  );
+  if (exact) return exact;
+
+  const token = q.split(/\s+/)[0];
+  if (token.length >= 2) {
+    const tokenHit = products.find(
+      (p) => p.smsName.trim().toLowerCase() === token
+    );
+    if (tokenHit) return tokenHit;
+  }
+
+  return null;
+}
+
+export function findProductBySkuInText(
+  text: string,
+  products: SellerProductView[]
+): SellerProductView | null {
+  const lower = text.toLowerCase();
+  const sorted = [...products]
+    .filter((p) => p.smsName.trim().length >= 2)
+    .sort((a, b) => b.smsName.trim().length - a.smsName.trim().length);
+
+  for (const p of sorted) {
+    const sku = p.smsName.trim();
+    if (sku && lower.includes(sku.toLowerCase())) return p;
+  }
+  return null;
 }
 
 export function matchProductBySmsName(
@@ -18,36 +59,61 @@ export function matchProductBySmsName(
   product: SellerProductView | null;
   matchedBy: OrderDraftLineItem["productMatch"]["matchedBy"];
 } {
-  const query = normalizeName(productName);
+  const cleaned = cleanOcrProductName(productName);
+  const query = normalizeName(cleaned);
   if (!query) return { product: null, matchedBy: "none" };
+
+  const skuHit =
+    matchProductBySku(cleaned, products) ??
+    findProductBySkuInText(cleaned, products);
+  if (skuHit) return { product: skuHit, matchedBy: "sms_alias" };
 
   const aliasHit = products.find(
     (p) => p.smsName && normalizeName(p.smsName) === query
   );
   if (aliasHit) return { product: aliasHit, matchedBy: "sms_alias" };
 
-  const aliasContains = products.find(
-    (p) =>
-      p.smsName &&
-      (normalizeName(p.smsName).includes(query) ||
-        query.includes(normalizeName(p.smsName)))
-  );
-  if (aliasContains) return { product: aliasContains, matchedBy: "sms_alias" };
-
   const officialHit = products.find(
     (p) => normalizeName(p.officialName) === query
   );
   if (officialHit) return { product: officialHit, matchedBy: "official_name" };
 
-  const officialContains = products.find(
-    (p) =>
-      normalizeName(p.officialName).includes(query) ||
-      query.includes(normalizeName(p.officialName))
-  );
+  const aliasContains = products.find((p) => {
+    const alias = normalizeName(p.smsName);
+    return alias.length >= 4 && query.includes(alias);
+  });
+  if (aliasContains) return { product: aliasContains, matchedBy: "sms_alias" };
+
+  const officialContains = products.find((p) => {
+    const official = normalizeName(p.officialName);
+    return official.length >= 4 && query.includes(official);
+  });
   if (officialContains)
     return { product: officialContains, matchedBy: "official_name" };
 
   return { product: null, matchedBy: "none" };
+}
+
+export function filterMeaningfulProductLines<
+  T extends { productName: string; quantity: number },
+>(lines: T[]): T[] {
+  return lines.filter((line) => !isNoiseProductLineName(line.productName));
+}
+
+export function isNoiseProductLineName(name: string): boolean {
+  const s = name.trim();
+  if (s.length < 2) return true;
+  if (/발주서\s*작성|주문서\s*작성|분석하기|붙여넣기|XML\s*가져오기/i.test(s)) {
+    return true;
+  }
+  if (/입력하세요|틱톡\s*닉네임|입금자명/i.test(s)) return true;
+  if (/^[\d\s×xX.…]+$/.test(s)) return true;
+  if (/^\d{1,2}:\d{2}\b/.test(s)) return true;
+  if (/\bLTE\b/i.test(s)) return true;
+  if (/^[\|\¢\$<>]/.test(s)) return true;
+  if (/^all\s/i.test(s)) return true;
+  if (!/[가-힣]/.test(s) && s.length < 5) return true;
+  return false;
 }
 
 export function buildDraftLineItem(

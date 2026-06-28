@@ -1,3 +1,12 @@
+import {
+  cleanOcrAddress,
+  cleanOcrProductName,
+  cleanOcrSmsText,
+  extractAddressFromOcrText,
+  isLikelyGarbledAddress,
+} from "./ocr-cleanup";
+import { isNoiseProductLineName } from "./order-draft-helpers";
+
 export interface ParsedOrderSms {
   productName: string;
   quantity: number;
@@ -158,12 +167,59 @@ export function normalizePhone(raw: string): string {
   return raw.trim();
 }
 
+/** 입력 중 연락처에 하이픈 자동 삽입 */
+export function formatPhoneLiveInput(raw: string): string {
+  const digits = raw.replace(/[^\d]/g, "").slice(0, 11);
+  if (!digits) return "";
+
+  if (digits.startsWith("02")) {
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 5) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+    if (digits.length <= 9) {
+      return `${digits.slice(0, 2)}-${digits.slice(2, digits.length - 4)}-${digits.slice(-4)}`;
+    }
+    return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6, 10)}`;
+  }
+
+  if (/^01[016789]/.test(digits)) {
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+  }
+
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  if (digits.length <= 10) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+}
+
 function extractPhones(text: string): string[] {
   const found: string[] = [];
+  for (const m of text.matchAll(
+    /\+82[\s.-]?1[016789][\s.-]?\d{3,4}[\s.-]?\d{4}/g
+  )) {
+    const digits = m[0].replace(/[^\d]/g, "");
+    const local = digits.startsWith("82") ? `0${digits.slice(2)}` : digits;
+    found.push(normalizePhone(local));
+  }
   for (const m of text.matchAll(phoneRe())) {
     found.push(normalizePhone(m[0]));
   }
   return [...new Set(found)];
+}
+
+function extractHonorificName(text: string): string {
+  const patterns = [
+    /(?:^|\n)\s*([가-힣]{2,4})님\b/m,
+    /([가-힣]{2,4})님[\s\S]{0,50}(?:감사|출고|배송|이용|몰)/,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m && isLikelyPersonName(m[1])) return m[1];
+  }
+  return "";
 }
 
 function stripPhones(text: string): string {
@@ -223,7 +279,12 @@ function isLikelyPersonName(s: string): boolean {
 function normalizeNameToken(line: string): string {
   return line
     .replace(/\s*(입니다|이에요|예요|감사.*)$/g, "")
+    .replace(/님$/, "")
     .trim();
+}
+
+function cleanPersonName(name: string): string {
+  return name.replace(/님$/, "").trim();
 }
 
 function isKoreanNameLine(line: string): boolean {
@@ -238,6 +299,7 @@ function isKoreanNameLine(line: string): boolean {
 
 function isSkippableLine(line: string): boolean {
   if (!line.trim()) return true;
+  if (isTemplateLine(line)) return true;
   if (/^(?:\[.+\]|※|안내|주문\s*완료|배송\s*안내)/.test(line)) return true;
   if (/^[❤️💙🥰🙏😊^^~♡]+$/.test(line)) return true;
   if (
@@ -250,6 +312,38 @@ function isSkippableLine(line: string): boolean {
   if (/^입완/.test(line) && !hasRegion(line)) return true;
   if (/^(?:계좌|신랑|은행|현금영수증|무배|검수)/.test(line)) return true;
   return false;
+}
+
+/** 안내 문자·주문서 양식(빈 칸) — 고객 답장이 아님 */
+function isTemplateLine(line: string): boolean {
+  const s = line.trim();
+  if (/^주문서\s*(?:보내|작성)/.test(s)) return true;
+  if (/^(?:입금\s*계좌|계좌번호|예금주)/.test(s)) return true;
+  if (/^(?:🏦|📝)\s/.test(s)) return true;
+  if (
+    /^[◾▪•\-]\s*(?:입금자|틱톡|받는|배송|전화|주문서)/.test(s)
+  ) {
+    return true;
+  }
+  if (
+    /^(?:입금자(?:명)?|틱톡\s*닉네임|받는\s*사람|배송\s*주소|받는분\s*전화(?:번호)?)\s*[:：]?\s*$/.test(
+      s
+    )
+  ) {
+    return true;
+  }
+  if (/^(?:우리|신한|국민|하나|농협|기업|카카오)은?행/.test(s) && /\d/.test(s)) {
+    return true;
+  }
+  return false;
+}
+
+function isMeaningfulFieldValue(val: string): boolean {
+  const s = val.trim();
+  if (s.length < 2) return false;
+  if (/^[:：.\s◾▪•\-]+$/.test(s)) return false;
+  if (/^전화번호\s*:?\s*$/.test(s)) return false;
+  return true;
 }
 
 function isLabelLine(line: string): boolean {
@@ -343,8 +437,8 @@ function parseDenseSingleLine(line: string): Partial<ParsedOrderSms> {
 
   const cityLine = rest.trim();
   if (/^[가-힣]{2,5}시/.test(cityLine)) {
-    let body = cityLine;
-    const nameAfter = body.match(/\s([가-힣]{2,4})\s*(?:입니다)?\s*$/);
+    let body = cityLine.replace(/\s*(?:입니다|이에요|예요)\s*$/g, "").trim();
+    const nameAfter = body.match(/\s([가-힣]{2,4})\s*$/);
     if (nameAfter && isLikelyPersonName(nameAfter[1])) {
       partial.recipientName = nameAfter[1];
       body = body.slice(0, nameAfter.index).trim();
@@ -432,9 +526,9 @@ function parseOrderedLines(lines: string[]): Partial<ParsedOrderSms> {
 
 function applyPartial(result: ParsedOrderSms, partial: Partial<ParsedOrderSms>) {
   if (partial.ordererName?.trim() && !result.ordererName)
-    result.ordererName = partial.ordererName.trim();
+    result.ordererName = cleanPersonName(partial.ordererName.trim());
   if (partial.recipientName?.trim() && !result.recipientName)
-    result.recipientName = partial.recipientName.trim();
+    result.recipientName = cleanPersonName(partial.recipientName.trim());
   if (partial.contactPhone?.trim() && !result.contactPhone)
     result.contactPhone = partial.contactPhone.trim();
   if (partial.contactPhone2?.trim() && !result.contactPhone2)
@@ -451,7 +545,8 @@ function applyPartial(result: ParsedOrderSms, partial: Partial<ParsedOrderSms>) 
 }
 
 export function parseOrderSms(text: string): ParsedOrderSms {
-  const lines = text
+  const cleanedText = cleanOcrSmsText(text);
+  const lines = cleanedText
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
@@ -469,6 +564,10 @@ export function parseOrderSms(text: string): ParsedOrderSms {
         const m = line.match(re);
         if (m) {
           const val = m[1].trim();
+          if (!isMeaningfulFieldValue(val)) {
+            matched = true;
+            break;
+          }
           if (key === "contactPhone") {
             result.contactPhone = normalizePhone(val);
           } else if (key === "contactPhone2") {
@@ -495,16 +594,25 @@ export function parseOrderSms(text: string): ParsedOrderSms {
       const qty = parseQuantityFromLine(line);
       if (qty) result.quantity = qty;
       const productLine = stripQuantityFromProduct(line);
-      if (/주문|구매/i.test(productLine) && productLine.length >= 4) {
+      if (
+        !isTemplateLine(productLine) &&
+        /주문|구매/i.test(productLine) &&
+        productLine.length >= 4 &&
+        !/^주문서/.test(productLine)
+      ) {
         productCandidates.push(productLine);
-      } else if (!looksLikeAddress(productLine) && !hasPhone(productLine)) {
+      } else if (
+        !looksLikeAddress(productLine) &&
+        !hasPhone(productLine) &&
+        !isTemplateLine(productLine)
+      ) {
         unstructured.push(line);
       }
     }
   }
 
   if (!result.contactPhone) {
-    const allPhones = extractPhones(text);
+    const allPhones = extractPhones(cleanedText);
     if (allPhones[0]) result.contactPhone = allPhones[0];
     if (allPhones[1]) result.contactPhone2 = allPhones[1];
   }
@@ -533,11 +641,23 @@ export function parseOrderSms(text: string): ParsedOrderSms {
         addrLines.push(line);
       }
     }
-    if (addrLines.length > 0) {
+    if (addrLines.length === 1 && hasPhone(addrLines[0])) {
+      applyPartial(result, parseDenseSingleLine(addrLines[0]));
+    } else if (addrLines.length > 0) {
       result.address = mergeAddressLines(addrLines);
       const pc = extractPostcode(result.address);
       if (pc) result.postalCode = pc;
     }
+  }
+
+  if (result.address && hasPhone(result.address)) {
+    const fixed = parseDenseSingleLine(result.address);
+    if (fixed.address?.trim()) result.address = fixed.address.trim();
+    if (fixed.recipientName?.trim()) {
+      result.recipientName = fixed.recipientName.trim();
+    }
+    if (fixed.contactPhone?.trim()) result.contactPhone = fixed.contactPhone.trim();
+    if (fixed.postalCode?.trim()) result.postalCode = fixed.postalCode.trim();
   }
 
   if (!result.recipientName || !result.ordererName) {
@@ -566,13 +686,96 @@ export function parseOrderSms(text: string): ParsedOrderSms {
     result.ordererName = result.recipientName;
   }
 
+  result.ordererName = cleanPersonName(result.ordererName);
+  result.recipientName = cleanPersonName(result.recipientName);
+
   const qtyInProduct = parseQuantityFromLine(result.productName);
   if (qtyInProduct) {
     result.quantity = qtyInProduct;
     result.productName = stripQuantityFromProduct(result.productName);
   }
 
+  if (result.address) result.address = cleanOcrAddress(result.address);
+  if (result.productName) result.productName = cleanOcrProductName(result.productName);
+
+  if (!result.address || isLikelyGarbledAddress(result.address)) {
+    const recovered = extractAddressFromOcrText(cleanedText);
+    if (recovered && recovered.length >= 8) {
+      result.address = recovered;
+      const pc = extractPostcode(recovered);
+      if (pc) result.postalCode = pc;
+    }
+  }
+
+  const outboundProducts = extractOutboundProductLines(cleanedText);
+  if (
+    outboundProducts.length > 0 &&
+    (!result.productName.trim() || isNoiseProductLine(result.productName))
+  ) {
+    result.productName = outboundProducts[0].productName;
+    result.quantity = outboundProducts[0].quantity;
+  }
+
+  if (!result.recipientName) {
+    const honorific = extractHonorificName(cleanedText);
+    if (honorific) {
+      result.recipientName = honorific;
+      if (!result.ordererName) result.ordererName = honorific;
+    }
+  }
+
   return result;
+}
+
+function isNoiseProductLine(name: string): boolean {
+  return isNoiseProductLineName(name);
+}
+
+/** 안내 문자 본문에서 상품·수량·가격 라인 추출 */
+export function extractOutboundProductLines(
+  text: string
+): { productName: string; quantity: number }[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const items: { productName: string; quantity: number }[] = [];
+
+  for (const line of lines) {
+    if (isSkippableLine(line) || isLabelLine(line)) continue;
+    if (looksLikeAddress(line) || hasPhone(line)) continue;
+
+    const priceEnd = line.match(
+      /^(.+?)\s+(\d{1,3}(?:,\d{3})*|\d{4,6})\s*(?:원)?\s*$/
+    );
+    const priceColon = line.match(
+      /^(.+?)\s*[:：]\s*(\d{1,3}(?:,\d{3})*|\d{4,6})\s*(?:원)?\s*$/
+    );
+    const priceMatch = priceColon ?? priceEnd;
+    if (priceMatch) {
+      const rawName = stripQuantityFromProduct(priceMatch[1].trim());
+      const setMatch = rawName.match(/(\d+)\s*세트/);
+      const qty =
+        parseQuantityFromLine(line) ??
+        (setMatch ? Math.max(1, parseInt(setMatch[1], 10)) : 1);
+      if (rawName.length >= 2 && !isNoiseProductLine(rawName)) {
+        items.push({ productName: rawName, quantity: qty });
+        continue;
+      }
+    }
+
+    const qty = parseQuantityFromLine(line);
+    const hasQtyMarker = qty !== null || /[x×X]\s*\d/.test(line);
+    if (!hasQtyMarker) continue;
+
+    const name = stripQuantityFromProduct(line).trim();
+    if (name.length < 2 || isNoiseProductLine(name)) continue;
+    if (/^(?:받는|수령|연락|주소|배송|입금|주문서)/i.test(name)) continue;
+
+    items.push({ productName: name, quantity: qty ?? 1 });
+  }
+
+  return items;
 }
 
 /** 문자 상단에서 상품·수량 라인 추출 (복수 상품) */
@@ -580,6 +783,9 @@ export function parseProductLinesFromSms(
   text: string,
   parsed?: ParsedOrderSms
 ): { productName: string; quantity: number }[] {
+  const outbound = extractOutboundProductLines(text);
+  if (outbound.length > 0) return outbound;
+
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())

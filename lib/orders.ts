@@ -12,6 +12,8 @@ import { parseProductLinesFromSms } from "./parse-order-sms";
 import {
   buildDraftLineItem,
   emptyDraftLine,
+  filterMeaningfulProductLines,
+  findProductBySkuInText,
 } from "./order-draft-helpers";
 import { calcOrderPricing } from "./order-pricing";
 import { getSellerProductViews } from "./products";
@@ -52,6 +54,7 @@ function rowToOrder(row: DbRow): Order {
     isRemoteArea: row.is_remote_area as boolean,
     rawSmsText: row.raw_sms_text as string,
     status: row.status as Order["status"],
+    exportSuffix: (row.export_suffix as string | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -61,27 +64,70 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function buildRawDraftLineItem(
+  productName: string,
+  quantity: number
+): OrderDraftLineItem {
+  return {
+    id: uuidv4(),
+    productId: null,
+    productName,
+    quantity,
+    purchasePrice: 0,
+    shippingFee: 0,
+    supplyTotal: 0,
+    celticDepositAmount: 0,
+    productMatch: {
+      productId: null,
+      officialName: null,
+      matchedBy: "none",
+      consumerPrice: 0,
+    },
+  };
+}
+
 export async function buildOrderDraftBundle(
   shopId: string,
   parsed: ParsedOrderSms,
   rawSmsText: string,
-  options?: { customerOrderDate?: string; orderDate?: string }
+  options?: {
+    customerOrderDate?: string;
+    orderDate?: string;
+    /** true면 문자에서 추출한 이름만 — 공급가·매칭은 반영 단계에서 */
+    rawOnly?: boolean;
+  }
 ): Promise<OrderDraftBundle> {
   const products = await getSellerProductViews(shopId);
   const today = todayIso();
   const customerOrderDate = options?.customerOrderDate?.slice(0, 10) || today;
   const orderDate = options?.orderDate?.slice(0, 10) || today;
-  const productLines = parseProductLinesFromSms(rawSmsText, parsed);
+  const productLinesRaw = parseProductLinesFromSms(rawSmsText, parsed);
+  let productLines = filterMeaningfulProductLines(productLinesRaw);
+
+  if (productLines.length === 0) {
+    const skuProduct = findProductBySkuInText(rawSmsText, products);
+    if (skuProduct) {
+      productLines = [
+        {
+          productName:
+            skuProduct.smsName.trim() || skuProduct.officialName,
+          quantity: parsed.quantity || 1,
+        },
+      ];
+    }
+  }
 
   const lines = productLines.map((pl) =>
-    buildDraftLineItem(
-      products,
-      pl.productName,
-      pl.quantity,
-      parsed.postalCode,
-      parsed.address,
-      false
-    )
+    options?.rawOnly
+      ? buildRawDraftLineItem(pl.productName, pl.quantity)
+      : buildDraftLineItem(
+          products,
+          pl.productName,
+          pl.quantity,
+          parsed.postalCode,
+          parsed.address,
+          false
+        )
   );
 
   return {
@@ -260,16 +306,40 @@ export async function getOrdersByIds(
   return (data ?? []).map(rowToOrder);
 }
 
+export async function getDistinctExportSuffixes(
+  shopId: string,
+  orderDate: string
+): Promise<string[]> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("orders")
+    .select("export_suffix")
+    .eq("shop_id", shopId)
+    .eq("order_date", orderDate.slice(0, 10))
+    .eq("status", "exported");
+  if (error) throw error;
+  const set = new Set<string>();
+  for (const row of data ?? []) {
+    set.add((row.export_suffix as string | null) ?? "");
+  }
+  return [...set];
+}
+
 export async function markOrdersExported(
   shopId: string,
-  ids: string[]
+  ids: string[],
+  exportSuffix: string
 ): Promise<void> {
   if (!ids.length) return;
   const supabase = createServerClient();
   const now = new Date().toISOString();
   const { error } = await supabase
     .from("orders")
-    .update({ status: "exported", updated_at: now })
+    .update({
+      status: "exported",
+      updated_at: now,
+      export_suffix: exportSuffix,
+    })
     .eq("shop_id", shopId)
     .in("id", ids);
   if (error) throw error;

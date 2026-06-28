@@ -248,10 +248,44 @@ AdminNav / SellerNav 에 링크 추가 (필요 시)
 
 | 페이지 | 설명 |
 |--------|------|
-| `/seller/orders` | SMS 답장·발주 초안·확정 |
-| `/seller/orders/import` | SMS 일괄 가져오기 |
+| `/seller/reply` | **답장 분석** — 문자 파싱 → 양식 기입 → 목록 누적 → 발주 탭 전달 |
+| `/seller/reply/import` | XML 일괄 가져오기 (개발 중) |
+| `/seller/orders` | **발주** — 답장 분석에서 넘긴 초안 확인·DB 저장·엑셀 export |
+| `/seller/orders/import` | `/seller/reply/import`로 리다이렉트 |
 | `/seller/outbound-sms` | 안내 문자 템플릿 |
 | `/admin/orders` | 셀틱: 전체 발주 현황 |
+
+#### 답장 분석 → 발주 (4단계)
+
+셀러가 **답장 분석 탭**에서 여러 건을 처리한 뒤 **발주 탭**으로 넘기는 흐름입니다.
+
+| 단계 | 화면 | 사용자 행동 | 데이터 상태 |
+|------|------|-------------|-------------|
+| ① 답장 분석 | `/seller/reply` | 문자·캡처 붙여넣기 → **분석하기** | `OrderDraftBundle` (rawOnly) — 문자에서 추출한 이름·주소·상품명만 |
+| ② 양식 기입·저장 | 같은 페이지 | **양식에 맞게 반영** → 표 수정 → **목록에 저장** | 공급가표 매칭·우편번호·매입·택배·계 반영 후 `QueuedReplyDraft` 큐에 push |
+| ③ 목록 누적 | 같은 페이지 하단 | 저장된 N건 확인·체크·펼쳐서 재수정·삭제 | `sessionStorage` `selltik_reply_draft_queue` |
+| ④ 발주서 작성 | 같은 페이지 → 발주 탭 | 선택(또는 전체) → **발주 탭으로 넘기기** | `sessionStorage` `selltik_pending_order_drafts` → `/seller/orders?draft=1` 또는 `?drafts=1` |
+
+**저장의 두 종류**
+
+- **목록에 저장** (답장 탭): 작업 큐에 쌓기. DB 발주 아님.
+- **발주 저장** (발주 탭): `orders` 테이블에 초안 생성.
+
+**관련 API**
+
+| API | 메서드 | 설명 |
+|-----|--------|------|
+| `/api/seller/orders/parse` | POST | SMS 1건 파싱 (rawOnly) |
+| `/api/seller/orders/refine` | POST | 공급가표·우편번호·금액 반영 |
+| `/api/seller/address/lookup` | POST | 카카오 주소 → 우편번호 |
+
+**관련 lib / 컴포넌트**
+
+- `lib/refine-order-draft.ts` — 반영 로직
+- `lib/order-draft-storage.ts` — 큐·발주 탭 handoff
+- `components/ReplyWorkflowGuide.tsx` — 4단계 안내 UI
+- `components/ReplyDraftQueuePanel.tsx` — ③ 저장 목록
+- `components/OrderDraftTableEditor.tsx` — ② 발주서형 편집 표
 
 | API | 메서드 | 설명 |
 |-----|--------|------|
@@ -260,7 +294,6 @@ AdminNav / SellerNav 에 링크 추가 (필요 시)
 | `/api/seller/orders/[id]/status` | PATCH | 상태 변경 |
 | `/api/seller/orders/bulk-status` | POST | 일괄 상태 |
 | `/api/seller/orders/bulk-create` | POST | 일괄 생성 |
-| `/api/seller/orders/parse` | POST | SMS 1건 파싱 |
 | `/api/seller/orders/parse-batch` | POST | SMS 일괄 파싱 |
 | `/api/seller/orders/resolve-address` | POST | 카카오 주소 보정 |
 | `/api/seller/orders/export` | GET | 엑셀 export |

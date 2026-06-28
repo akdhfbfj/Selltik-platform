@@ -145,12 +145,13 @@ export default function OrderEditForm({
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        const supplyTotal = pricing.purchasePrice + form.shippingFee;
         onSave({
           ...form,
           purchasePrice: pricing.purchasePrice,
-          shippingFee: pricing.shippingFee,
-          supplyTotal: pricing.supplyTotal,
-          celticDepositAmount: pricing.celticDepositAmount,
+          shippingFee: form.shippingFee,
+          supplyTotal,
+          celticDepositAmount: supplyTotal,
           isRemoteArea: pricing.isRemoteArea,
         });
       }}
@@ -324,11 +325,45 @@ export default function OrderEditForm({
         </div>
       </div>
 
-      <div className="mt-4 rounded-xl border border-emerald-200 bg-white p-3 text-sm">
+      <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-3">
+        <div>
+          <p className="text-[11px] text-slate-500">매입가</p>
+          <p className="text-sm font-semibold tabular-nums text-slate-800">
+            {formatKrw(pricing.purchasePrice)}
+          </p>
+        </div>
+        <div>
+          <label className="mb-1 block text-[11px] font-medium text-slate-500">
+            택배비 (수정 가능)
+          </label>
+          <input
+            type="number"
+            min={0}
+            step={100}
+            className={SELLER_INPUT_CLASS}
+            value={form.shippingFee}
+            onChange={(e) => {
+              const shippingFee = Math.max(
+                0,
+                parseInt(e.target.value, 10) || 0
+              );
+              patch({ shippingFee });
+            }}
+          />
+        </div>
+        <div>
+          <p className="text-[11px] text-slate-500">계 (매입+택배)</p>
+          <p className="text-sm font-semibold tabular-nums text-slate-800">
+            {formatKrw(pricing.purchasePrice + form.shippingFee)}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-xl border border-emerald-200 bg-white p-3 text-sm">
         <div className="flex justify-between">
           <span className="text-slate-600">셀틱 입금액</span>
           <span className="font-semibold text-emerald-700">
-            {formatKrw(pricing.celticDepositAmount)}
+            {formatKrw(pricing.purchasePrice + form.shippingFee)}
           </span>
         </div>
       </div>

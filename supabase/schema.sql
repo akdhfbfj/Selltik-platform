@@ -111,6 +111,7 @@ create table if not exists orders (
   is_remote_area boolean not null default false,
   raw_sms_text text not null default '',
   status text not null default 'draft',
+  export_suffix text,
 
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

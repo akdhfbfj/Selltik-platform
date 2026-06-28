@@ -229,6 +229,22 @@ export function extractProductHints(
       .filter(Boolean);
 
     for (const line of rawLines) {
+      const colonPrice = line.match(/^(.+?)\s*[:：]\s*\d/);
+      if (colonPrice) {
+        const norm = normalizeProductKey(colonPrice[1].trim());
+        if (norm && norm !== normalizeProductKey(finalName)) {
+          const key = `colon:${norm}=>${finalName}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            hints.push({
+              fromText: norm,
+              toName: finalName,
+              toQuantity: finalQty > 0 ? finalQty : undefined,
+            });
+          }
+        }
+      }
+
       if (!/[x×X]\s*\d|\d+\s*개/.test(line)) continue;
       const namePart = line
         .replace(/[x×X]\s*\d+.*/i, "")
@@ -264,7 +280,10 @@ export function applyProductHints(
   for (const hint of hints) {
     const matched =
       (parsedKey && (parsedKey === hint.fromText || parsedKey.includes(hint.fromText))) ||
-      rawKey.includes(hint.fromText);
+      rawKey.includes(hint.fromText) ||
+      rawText
+        .split(/\r?\n/)
+        .some((line) => normalizeProductKey(line).includes(hint.fromText));
 
     if (!matched) continue;
 

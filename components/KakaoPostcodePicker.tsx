@@ -23,6 +23,14 @@ interface KakaoPostcodePickerProps {
   onPick: (result: PostcodePickResult) => void;
   onStatus?: (message: string) => void;
   inputSlot: ReactNode;
+  /** 검색 버튼 문구 */
+  searchButtonLabel?: string;
+  /** 값이 바뀔 때마다 검색창 자동 오픈 (분석 직후 등) */
+  autoOpenTrigger?: number;
+  /** 증가할 때 열려 있는 검색창 닫기 */
+  closeSignal?: number;
+  /** 검색 버튼을 입력란 아래에 배치 */
+  searchButtonBelow?: boolean;
 }
 
 type PostcodeCtor = new (options: {
@@ -54,6 +62,10 @@ export default function KakaoPostcodePicker({
   onPick,
   onStatus,
   inputSlot,
+  searchButtonLabel = "주소 추출 시작",
+  autoOpenTrigger = 0,
+  closeSignal = 0,
+  searchButtonBelow = false,
 }: KakaoPostcodePickerProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [scriptReady, setScriptReady] = useState(false);
@@ -86,6 +98,23 @@ export default function KakaoPostcodePicker({
     setOpen(true);
     setEmbedPending(true);
   }, [rawAddress, onStatus]);
+
+  const consumedAutoOpenRef = useRef(0);
+
+  useEffect(() => {
+    if (
+      autoOpenTrigger > 0 &&
+      autoOpenTrigger !== consumedAutoOpenRef.current &&
+      rawAddress.trim()
+    ) {
+      consumedAutoOpenRef.current = autoOpenTrigger;
+      openSearch();
+    }
+  }, [autoOpenTrigger, rawAddress, openSearch]);
+
+  useEffect(() => {
+    if (closeSignal > 0) closeSearch();
+  }, [closeSignal, closeSearch]);
 
   useEffect(() => {
     if (!open || !embedPending) return;
@@ -141,30 +170,44 @@ export default function KakaoPostcodePicker({
     return () => window.clearInterval(timer);
   }, []);
 
+  const searchButton = (
+    <button
+      type="button"
+      onClick={openSearch}
+      disabled={!rawAddress.trim() || (open && embedPending)}
+      className={`flex items-center justify-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 ${
+        searchButtonBelow ? "w-full sm:w-auto" : "shrink-0"
+      }`}
+      title="카카오 우편번호 검색"
+    >
+      {!scriptReady && open && embedPending ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <MapPin className="h-4 w-4" />
+      )}
+      {searchButtonLabel}
+    </button>
+  );
+
   return (
     <div className="space-y-2">
+      {searchButtonBelow ? (
+        <>
+          <div className="w-full min-w-0">{inputSlot}</div>
+          {searchButton}
+        </>
+      ) : (
         <div className="flex gap-2">
           {inputSlot}
-          <button
-            type="button"
-            onClick={openSearch}
-            disabled={!rawAddress.trim() || (open && embedPending)}
-            className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-            title="카카오 우편번호 검색"
-          >
-            {!scriptReady && open && embedPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <MapPin className="h-4 w-4" />
-            )}
-            검색
-          </button>
+          {searchButton}
         </div>
+      )}
         {open && (
           <div className="rounded-lg border border-slate-200 bg-white p-2">
             <div className="mb-2 flex items-center justify-between gap-2">
               <p className="text-xs text-slate-500">
-                추출한 주소로 검색합니다. 맞는 결과만 선택하세요.
+                원문에서 추출한 주소로 검색합니다. 맞는 결과를 클릭하면
+                우편번호·정제 주소가 채워집니다.
               </p>
               <button
                 type="button"

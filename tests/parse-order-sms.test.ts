@@ -44,6 +44,14 @@ for (const fc of cases) {
   });
 }
 
+test("extractOutboundProductLines: 안내 문자 가격 라인", () => {
+  const text = "세탁캡슐세제 5봉 1세트 29000";
+  const lines = parseProductLinesFromSms(text);
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].productName, "세탁캡슐세제 5봉 1세트");
+  assert.equal(lines[0].quantity, 1);
+});
+
 test("parseProductLinesFromSms: 복수 상품 라인 추출", () => {
   const text = [
     "셀틱 유산균 x2",

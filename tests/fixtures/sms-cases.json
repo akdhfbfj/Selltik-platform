@@ -96,5 +96,25 @@
       "contactPhone": "010-6300-4635",
       "addressIncludes": ["군산"]
     }
+  },
+  {
+    "id": "case-13-outbound-plus-reply",
+    "note": "안내+답장 캡처 (세탁캡슐)",
+    "input": "주문서 보내드립니다^^\n세탁캡슐세제 5봉 1세트 29000\n입금계좌: 우리은행\n입금자명 :\n받는 사람 :\n배송 주소 :\n받는분 전화번호:\n입금했어요\n군산시 칠성3길8 미룡대명2차 202동1810호 서윤경 010 7190 1110 입니다",
+    "expect": {
+      "recipientName": "서윤경",
+      "contactPhone": "010-7190-1110",
+      "addressIncludes": ["군산시", "칠성3길"]
+    }
+  },
+  {
+    "id": "case-14-hamigua-kakaotalk",
+    "note": "카카오톡 캡처 OCR - 하미과메론·이미화님",
+    "input": "+82 10-9287-8368\n하미과메론 2<9 24900\n경기도 광주시 도척면 도척로 327-2204% 진우리 동화타운\n이미화님 복덩이몰 이용해 주셔서 감사합니다",
+    "expect": {
+      "recipientName": "이미화",
+      "contactPhone": "010-9287-8368",
+      "addressIncludes": ["327-2", "204호", "동화타운"]
+    }
   }
 ]

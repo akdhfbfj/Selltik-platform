@@ -1,19 +1,32 @@
 import XLSX from "xlsx-js-style";
+import {
+  ORDER_SPREADSHEET_HEADERS,
+  formatOrderDateShort,
+  orderToSpreadsheetRow,
+  shouldPastelHighlightRow,
+} from "./order-spreadsheet-columns";
 import type { Order } from "./types";
 import { orderPersonKey } from "./order-duplicates";
 
-const COLS = 13;
-const TOTAL_COL = 13; // N열
-const DATA_START_ROW = 3;
+export { formatOrderDateShort };
+
+const COLS = 14;
+const TOTAL_COL = 12; // M열 계
+const CELTIC_COL = 13; // N열 셀틱 입금액
+const DATA_START_ROW = 3; // 엑셀 4행
 const MIN_DATA_ROWS = 30;
 
-/** 동일 주문자·수령인·연락처1 묶음 — A~M 행 전체 파스텔 */
+const HEADER_FILL = "E0E0E0";
+const CELTIC_HEADER_FILL = "FFF9C4";
+const CELTIC_TOTAL_FILL = "FFEB3B";
+
+const PASTEL_ROW_FILL = "E8F5E9";
+
+/** 동일 수신인 묶음 — 그룹별 파스텔 */
 const GROUP_ROW_COLORS = [
   "E3F2FD",
   "F3E5F5",
-  "E8F5E9",
   "FFF8E1",
-  "FCE4EC",
   "E0F7FA",
   "F1F8E9",
   "EDE7F6",
@@ -27,10 +40,10 @@ function cellRef(row: number, col: number): string {
 
 function baseBorder() {
   return {
-    top: { style: "thin", color: { rgb: "CCCCCC" } },
-    bottom: { style: "thin", color: { rgb: "CCCCCC" } },
-    left: { style: "thin", color: { rgb: "CCCCCC" } },
-    right: { style: "thin", color: { rgb: "CCCCCC" } },
+    top: { style: "thin", color: { rgb: "000000" } },
+    bottom: { style: "thin", color: { rgb: "000000" } },
+    left: { style: "thin", color: { rgb: "000000" } },
+    right: { style: "thin", color: { rgb: "000000" } },
   };
 }
 
@@ -57,10 +70,34 @@ function styledCell(
   };
 }
 
-/** yy-mm-dd (실무 양식) — 타임존 영향 없이 ISO 문자열만 사용 */
-export function formatOrderDateShort(isoDate: string): string {
-  const [y, m, d] = isoDate.slice(0, 10).split("-");
-  return `${y.slice(2)}-${m}-${d}`;
+function buildGroupMeta(orders: Order[]) {
+  const groupCounts = new Map<string, number>();
+  const groupStyleIndex = new Map<string, number>();
+  let styleCursor = 0;
+
+  for (const o of orders) {
+    const key = orderPersonKey(o);
+    groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
+    if (!groupStyleIndex.has(key)) {
+      groupStyleIndex.set(key, styleCursor % GROUP_ROW_COLORS.length);
+      styleCursor++;
+    }
+  }
+  return { groupCounts, groupStyleIndex };
+}
+
+function rowFill(
+  order: Order,
+  groupCounts: Map<string, number>,
+  groupStyleIndex: Map<string, number>
+): string | undefined {
+  if (!shouldPastelHighlightRow(order, groupCounts)) return undefined;
+  const key = orderPersonKey(order);
+  const bundled = (groupCounts.get(key) ?? 0) > 1;
+  if (bundled) {
+    return GROUP_ROW_COLORS[groupStyleIndex.get(key) ?? 0];
+  }
+  return PASTEL_ROW_FILL;
 }
 
 /** @deprecated 엑셀 시리얼 — 테스트 호환용 */
@@ -81,53 +118,39 @@ export function sumSupplyTotal(orders: Order[]): number {
   return orders.reduce((sum, o) => sum + o.supplyTotal, 0);
 }
 
+/** 같은 날 n번째 최종 발주서 파일 접미사: "", "A", "B", … */
+export function formatExportFileSuffix(priorExportCount: number): string {
+  if (priorExportCount <= 0) return "";
+  return String.fromCharCode(64 + priorExportCount);
+}
+
 function emptyRowValues(): CellValue[] {
-  return Array.from({ length: COLS }, (_, i) => (i === 12 ? 0 : ""));
+  return Array.from({ length: COLS }, (_, i) =>
+    i === TOTAL_COL || i === CELTIC_COL ? 0 : ""
+  );
 }
 
-function buildGroupMeta(orders: Order[]) {
-  const groupCounts = new Map<string, number>();
-  const groupStyleIndex = new Map<string, number>();
-  let styleCursor = 0;
-
-  for (const o of orders) {
-    const key = orderPersonKey(o);
-    groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
-    if (!groupStyleIndex.has(key)) {
-      groupStyleIndex.set(key, styleCursor % GROUP_ROW_COLORS.length);
-      styleCursor++;
-    }
-  }
-
-  return { groupCounts, groupStyleIndex };
-}
-
-function orderRowValues(
+function spreadsheetRowValues(
   o: Order,
   exportOrderDate: string,
-  bundled: boolean
+  groupCounts: Map<string, number>
 ): CellValue[] {
-  const memo =
-    bundled && !o.shippingMemo.trim()
-      ? "묶음배송"
-      : bundled
-        ? o.shippingMemo.trim() || "묶음배송"
-        : o.shippingMemo;
-
+  const row = orderToSpreadsheetRow(o, { exportOrderDate, groupCounts });
   return [
-    formatOrderDateShort(exportOrderDate),
-    o.productName,
-    o.quantity,
-    o.ordererName,
-    o.recipientName,
-    o.contactPhone,
-    o.contactPhone2,
-    o.postalCode,
-    o.address,
-    memo,
-    o.purchasePrice,
-    o.shippingFee === 0 ? "-" : o.shippingFee,
-    o.supplyTotal,
+    row.orderDate,
+    row.productName,
+    row.quantity,
+    row.ordererName,
+    row.recipientName,
+    row.contactPhone,
+    row.contactPhone2,
+    row.postalCode,
+    row.address,
+    row.shippingMemo,
+    row.purchasePrice,
+    row.shippingFee,
+    row.supplyTotal,
+    "",
   ];
 }
 
@@ -137,30 +160,22 @@ export function buildOrderSheetRows(
   exportOrderDate: string
 ): CellValue[][] {
   const { groupCounts } = buildGroupMeta(orders);
+  const unitRow = Array.from({ length: COLS }, () => "");
+  unitRow[0] = shopName;
+  unitRow[COLS - 1] = "(단위:원)";
 
   const rows: CellValue[][] = [
     ["발주서"],
-    [shopName, "", "", "", "", "", "", "", "", "", "", "", "(단위:원)"],
-    [
-      "발주일자",
-      "제품명",
-      "수량",
-      "주문자",
-      "수령인",
-      "연락처1",
-      "연락처2",
-      "우편번호",
-      "주소",
-      "배송메모",
-      "매입가",
-      "택배비",
-      "계",
-    ],
+    unitRow,
+    [...ORDER_SPREADSHEET_HEADERS],
   ];
 
   for (const o of orders) {
-    const bundled = (groupCounts.get(orderPersonKey(o)) ?? 0) > 1;
-    rows.push(orderRowValues(o, exportOrderDate, bundled));
+    rows.push(spreadsheetRowValues(o, exportOrderDate, groupCounts));
+  }
+
+  if (orders.length > 0) {
+    rows[3][CELTIC_COL] = sumCelticDeposit(orders);
   }
 
   const padCount = Math.max(0, MIN_DATA_ROWS - orders.length);
@@ -179,50 +194,65 @@ export function buildOrderWorkbook(
   const rows = buildOrderSheetRows(shopName, orders, exportOrderDate);
   const { groupCounts, groupStyleIndex } = buildGroupMeta(orders);
   const ws: XLSX.WorkSheet = {};
+  const celticTotal = sumCelticDeposit(orders);
 
   ws[cellRef(0, 0)] = styledCell("발주서", { bold: true, align: "center" });
   ws[cellRef(1, 0)] = styledCell(shopName, { bold: true });
-  ws[cellRef(1, 12)] = styledCell("(단위:원)", { align: "right" });
+  ws[cellRef(1, COLS - 1)] = styledCell("(단위:원)", { align: "right" });
 
-  rows[2].forEach((h, c) => {
-    ws[cellRef(2, c)] = styledCell(h as string, { bold: true, align: "center" });
+  ORDER_SPREADSHEET_HEADERS.forEach((h, c) => {
+    ws[cellRef(2, c)] = styledCell(h, {
+      bold: true,
+      align: "center",
+      fill: h === "셀틱 입금액" ? CELTIC_HEADER_FILL : HEADER_FILL,
+    });
   });
 
-  const mColumnTotal = sumSupplyTotal(orders);
-  ws[cellRef(3, TOTAL_COL)] = styledCell(mColumnTotal, {
-    bold: true,
-    align: "right",
-    numFmt: "#,##0",
-  });
+  if (orders.length > 0) {
+    ws[cellRef(DATA_START_ROW, CELTIC_COL)] = styledCell(celticTotal, {
+      bold: true,
+      align: "right",
+      fill: CELTIC_TOTAL_FILL,
+      numFmt: "#,##0",
+    });
+  }
 
   for (let i = 0; i < orders.length; i++) {
     const o = orders[i];
-    const key = orderPersonKey(o);
-    const bundled = (groupCounts.get(key) ?? 0) > 1;
-    const rowFill = bundled
-      ? GROUP_ROW_COLORS[groupStyleIndex.get(key) ?? 0]
-      : undefined;
-    const values = orderRowValues(o, exportOrderDate, bundled);
+    const fill = rowFill(o, groupCounts, groupStyleIndex);
+    const values = spreadsheetRowValues(o, exportOrderDate, groupCounts);
 
     values.forEach((val, c) => {
+      if (c === CELTIC_COL) return;
       ws[cellRef(DATA_START_ROW + i, c)] = styledCell(val, {
-        fill: rowFill,
+        fill,
         numFmt: c === 10 || c === 11 || c === 12 ? "#,##0" : undefined,
-        align: c === 2 || c >= 10 ? "right" : "left",
+        align:
+          c === 2 || (c >= 10 && c <= 12)
+            ? "right"
+            : c === 0
+              ? "center"
+              : "left",
       });
     });
   }
 
   for (let i = orders.length; i < MIN_DATA_ROWS; i++) {
     emptyRowValues().forEach((val, c) => {
+      if (c === CELTIC_COL) return;
       ws[cellRef(DATA_START_ROW + i, c)] = styledCell(val, {
-        numFmt: c === 12 ? "#,##0" : undefined,
-        align: c === 2 || c >= 10 ? "right" : "left",
+        numFmt: c === TOTAL_COL ? "#,##0" : undefined,
+        align:
+          c === 2 || (c >= 10 && c <= 12)
+            ? "right"
+            : c === 0
+              ? "center"
+              : "left",
       });
     });
   }
 
-  ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } }];
+  ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: COLS - 1 } }];
   ws["!cols"] = [
     { wch: 10 },
     { wch: 42 },
@@ -241,7 +271,7 @@ export function buildOrderWorkbook(
   ];
   ws["!ref"] = XLSX.utils.encode_range({
     s: { r: 0, c: 0 },
-    e: { r: DATA_START_ROW + MIN_DATA_ROWS - 1, c: TOTAL_COL },
+    e: { r: DATA_START_ROW + MIN_DATA_ROWS - 1, c: CELTIC_COL },
   });
 
   const wb = XLSX.utils.book_new();
@@ -261,11 +291,30 @@ export function buildOrderXlsxBuffer(
 }
 
 /** 파일명 — ISO 날짜 문자열 기준 (타임존 오류 방지) */
-export function orderExportFilename(
+export function orderExportTitle(
   shopName: string,
-  orderDateIso: string
+  orderDateIso: string,
+  suffix?: string | null
 ): string {
   const [y, m, d] = orderDateIso.slice(0, 10).split("-");
   const safe = shopName.replace(/[\\/:*?"<>|]/g, "_").trim() || "셀러";
-  return `[발주] ${Number(y) % 100}.${Number(m)}.${Number(d)}. 발주서(${safe}).xlsx`;
+  const letter = suffix ?? "";
+  return `[발주] ${Number(y) % 100}.${Number(m)}.${Number(d)}. 발주서(${safe})${letter}`;
+}
+
+export function orderExportFilename(
+  shopName: string,
+  orderDateIso: string,
+  options?: {
+    kind?: "final" | "preview";
+    suffix?: string;
+  }
+): string {
+  const prefix = options?.kind === "preview" ? "[임시발주]" : "[발주]";
+  const base = orderExportTitle(
+    shopName,
+    orderDateIso,
+    options?.suffix ?? ""
+  ).replace(/^\[발주\]/, prefix);
+  return `${base}.xlsx`;
 }

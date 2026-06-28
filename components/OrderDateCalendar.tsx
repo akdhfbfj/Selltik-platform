@@ -8,9 +8,9 @@ import { useEffect, useMemo, useState } from "react";
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
 const STATUS_COLORS = {
-  draft: { dot: "bg-red-500", text: "text-red-600", label: "입금 대기" },
-  paid: { dot: "bg-emerald-500", text: "text-emerald-600", label: "발주 준비" },
-  exported: { dot: "bg-blue-500", text: "text-blue-600", label: "다운로드 완료" },
+  draft: { dot: "bg-red-500", text: "text-red-600", label: "임시" },
+  paid: { dot: "bg-emerald-500", text: "text-emerald-600", label: "최종" },
+  exported: { dot: "bg-blue-500", text: "text-blue-600", label: "발주 완료" },
 } as const;
 
 function pad2(n: number): string {

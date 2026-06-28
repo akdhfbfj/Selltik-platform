@@ -294,6 +294,8 @@ export interface Order {
   isRemoteArea: boolean;
   rawSmsText: string;
   status: OrderStatus;
+  /** 같은 날 최종 발주서 파일 구분 (A, B, …) */
+  exportSuffix?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -357,6 +359,15 @@ export interface OrderDraftBundle {
   lines: OrderDraftLineItem[];
 }
 
+/** 답장 분석 페이지에 쌓아 두는 발주 초안 */
+export interface QueuedReplyDraft {
+  id: string;
+  bundle: OrderDraftBundle;
+  selected: boolean;
+  savedAt: string;
+  label: string;
+}
+
 export interface OrderDraftPreview extends OrderInput {
   productMatch: {
     productId: string | null;
@@ -372,17 +383,17 @@ export interface OrderDraftPreview extends OrderInput {
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   draft: "입금 대기",
   confirmed: "확정",
-  exported: "다운로드 완료",
-  paid: "입금확인",
+  exported: "발주 완료",
+  paid: "입금 완료",
 };
 
 export type OrderListTab = "draft" | "paid" | "exported" | "all";
 
 export const ORDER_LIST_TABS: { id: OrderListTab; label: string }[] = [
+  { id: "draft", label: "임시 발주서" },
+  { id: "paid", label: "최종 발주서" },
+  { id: "exported", label: "발주 완료" },
   { id: "all", label: "전체" },
-  { id: "draft", label: "입금 대기" },
-  { id: "paid", label: "발주 준비" },
-  { id: "exported", label: "다운로드 완료" },
 ];
 
 export type OrderDateStatusCounts = {

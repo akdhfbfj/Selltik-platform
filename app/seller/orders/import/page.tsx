@@ -1,5 +1,6 @@
-import SmsImportWizard from "@/components/SmsImportWizard";
+import { redirect } from "next/navigation";
 
-export default function SellerOrdersImportPage() {
-  return <SmsImportWizard />;
+/** 이전 URL 호환 */
+export default function LegacyOrdersImportPage() {
+  redirect("/seller/reply/import");
 }

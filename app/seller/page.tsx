@@ -7,10 +7,11 @@ import {
   ArrowRight,
   Banknote,
   Download,
-  MessageSquare,
   Package,
   Send,
   Sparkles,
+  FileText,
+  ClipboardPaste,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -60,12 +61,20 @@ export default async function SellerHomePage() {
       desc: "상품 담기 · 문자 복사",
     },
     {
-      href: "/seller/orders",
-      icon: MessageSquare,
+      href: "/seller/reply",
+      icon: ClipboardPaste,
       iconClass: "text-emerald-600",
       borderClass: "border-emerald-200 hover:border-emerald-300",
-      title: "② 답장·발주",
-      desc: "답장 분석 · xlsx 출력",
+      title: "② 답장 분석",
+      desc: "붙여넣기 · 스크린샷",
+    },
+    {
+      href: "/seller/orders",
+      icon: FileText,
+      iconClass: "text-emerald-600",
+      borderClass: "border-emerald-200 hover:border-emerald-300",
+      title: "③ 발주",
+      desc: "초안 저장 · xlsx 출력",
       badge:
         stats.orderPaid > 0 ? `발주 준비 ${stats.orderPaid}건` : undefined,
     },
@@ -140,7 +149,11 @@ export default async function SellerHomePage() {
           </span>
           <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
           <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-800">
-            ② 답장·발주
+            ② 답장 분석
+          </span>
+          <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+          <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-800">
+            ③ 발주
           </span>
           <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
           <span className="rounded-full bg-amber-100 px-2.5 py-1 font-medium text-amber-800">

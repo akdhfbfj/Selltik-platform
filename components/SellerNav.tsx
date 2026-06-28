@@ -5,9 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import {
   LayoutDashboard,
+  ClipboardPaste,
+  FileText,
   LogOut,
   Menu,
-  MessageSquare,
   Package,
   Package2,
   Send,
@@ -25,12 +26,16 @@ const NAV_LINKS = [
   { href: "/seller", label: "홈", icon: LayoutDashboard },
   { href: "/seller/products", label: "상품·공급가", icon: Package },
   { href: "/seller/outbound-sms", label: "안내 문자", icon: Send },
-  { href: "/seller/orders", label: "답장·발주", icon: MessageSquare },
+  { href: "/seller/reply", label: "답장 분석", icon: ClipboardPaste },
+  { href: "/seller/orders", label: "발주", icon: FileText },
   { href: "/seller/recommend", label: "신상품 추천", icon: Sparkles },
   { href: "/seller/account", label: "내 계정", icon: User },
 ] as const;
 
 function linkActive(pathname: string, href: string): boolean {
+  if (href === "/seller/reply") {
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
   if (href === "/seller/orders") {
     return pathname === href || pathname.startsWith(`${href}/`);
   }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildOrderSheetRows,
+  formatExportFileSuffix,
   formatOrderDateShort,
   orderExportFilename,
   sumCelticDeposit,
@@ -40,14 +41,16 @@ const sampleOrder = (overrides: Partial<Order> = {}): Order => ({
 describe("export-order-xlsx", () => {
   const exportDate = "2026-06-08";
 
-  it("13열 양식: A1 발주서, A2 쇼핑몰명", () => {
+  it("14열 양식: A1 발주서, A2 쇼핑몰명, N열 셀틱 입금액", () => {
     const rows = buildOrderSheetRows("광고몰", [sampleOrder()], exportDate);
     assert.equal(rows[0][0], "발주서");
-    assert.equal(rows[1].length, 13);
+    assert.equal(rows[1].length, 14);
     assert.equal(rows[1][0], "광고몰");
-    assert.equal(rows[1][12], "(단위:원)");
+    assert.equal(rows[1][13], "(단위:원)");
     assert.equal(rows[2][12], "계");
-    assert.equal(rows[2].length, 13);
+    assert.equal(rows[2][13], "셀틱 입금액");
+    assert.equal(rows[2].length, 14);
+    assert.equal(rows[3][13], 204000);
   });
 
   it("발주일자 yy-mm-dd, 묶음배송 메모", () => {
@@ -62,6 +65,8 @@ describe("export-order-xlsx", () => {
     assert.equal(rows[3][0], "26-06-08");
     assert.equal(rows[3][9], "묶음배송");
     assert.equal(rows[4][9], "묶음배송");
+    assert.equal(rows[3][13], 408000);
+    assert.equal(rows[4][13], "");
   });
 
   it("sumCelticDeposit", () => {
@@ -85,8 +90,26 @@ describe("export-order-xlsx", () => {
   it("orderExportFilename uses ISO date without timezone drift", () => {
     assert.match(
       orderExportFilename("신밧드", "2026-06-08"),
-      /\[발주\] 26\.6\.8\. 발주서\(신밧드\)/
+      /\[발주\] 26\.6\.8\. 발주서\(신밧드\)\.xlsx/
     );
+  });
+
+  it("orderExportFilename same-day suffix A, B", () => {
+    assert.match(
+      orderExportFilename("띵동이네", "2026-06-09", { suffix: "A" }),
+      /발주서\(띵동이네\)A\.xlsx/
+    );
+    assert.match(
+      orderExportFilename("띵동이네", "2026-06-09", { suffix: "B" }),
+      /발주서\(띵동이네\)B\.xlsx/
+    );
+  });
+
+  it("formatExportFileSuffix", () => {
+    assert.equal(formatExportFileSuffix(0), "");
+    assert.equal(formatExportFileSuffix(1), "A");
+    assert.equal(formatExportFileSuffix(2), "B");
+    assert.equal(formatExportFileSuffix(3), "C");
   });
 
   it("sumSupplyTotal", () => {
