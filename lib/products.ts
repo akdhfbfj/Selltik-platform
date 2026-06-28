@@ -9,6 +9,7 @@ import type {
 import type { ParsedSupplyProduct } from "./parse-supply-csv";
 import { getAllShops } from "./shops";
 import { createServerClient } from "./supabase/server";
+import { cache } from "react";
 
 type DbRow = Record<string, unknown>;
 
@@ -91,7 +92,7 @@ async function fetchAllRows<T>(
   return all;
 }
 
-export async function getAllMasterProducts(): Promise<MasterProduct[]> {
+export const getAllMasterProducts = cache(async (): Promise<MasterProduct[]> => {
   const supabase = createServerClient();
   const rows = await fetchAllRows<DbRow>((from, to) =>
     supabase
@@ -102,7 +103,7 @@ export async function getAllMasterProducts(): Promise<MasterProduct[]> {
       .then((r) => r)
   );
   return rows.map(rowToProduct);
-}
+});
 
 export async function getMasterProductById(id: string): Promise<MasterProduct | null> {
   const supabase = createServerClient();
@@ -480,9 +481,9 @@ export async function importSupplyProducts(
   };
 }
 
-export async function getSellerProductViews(
+export const getSellerProductViews = cache(async (
   shopId: string
-): Promise<SellerProductView[]> {
+): Promise<SellerProductView[]> => {
   const products = await getAllMasterProducts();
   const supabase = createServerClient();
   const [
@@ -561,7 +562,7 @@ export async function getSellerProductViews(
       changeDetail: review?.detail,
     };
   });
-}
+});
 
 export async function setSellerProductFavorite(
   shopId: string,

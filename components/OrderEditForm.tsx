@@ -62,6 +62,7 @@ interface OrderEditFormProps {
   order: Order;
   products: SellerProductView[];
   saving?: boolean;
+  inModal?: boolean;
   onSave: (payload: OrderEditState) => void;
   onCancel: () => void;
 }
@@ -70,6 +71,7 @@ export default function OrderEditForm({
   order,
   products,
   saving = false,
+  inModal = false,
   onSave,
   onCancel,
 }: OrderEditFormProps) {
@@ -155,7 +157,7 @@ export default function OrderEditForm({
           isRemoteArea: pricing.isRemoteArea,
         });
       }}
-      className="mb-6 rounded-2xl border border-blue-200 bg-blue-50/20 p-6 shadow-sm"
+      className={`${inModal ? "p-6" : "mb-6 rounded-2xl border border-blue-200 bg-blue-50/20 p-6 shadow-sm"}`}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>

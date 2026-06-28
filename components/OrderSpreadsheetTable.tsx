@@ -2,6 +2,7 @@
 
 import {
   COMPLETED_HEADERS,
+  COMPLETED_SUMMARY_COLSPAN,
   SELLER_HEADERS,
   VENDOR_HEADERS,
   buildGroupCounts,
@@ -10,7 +11,9 @@ import {
   orderPriceFields,
   orderToSpreadsheetRow,
   shouldPastelHighlightRow,
+  shouldShowExportGroupSummaries,
   sumOrderPriceFields,
+  type CompletedGroup,
   type SpreadsheetColumnMode,
 } from "@/lib/order-spreadsheet-display";
 import { formatKrw } from "@/lib/parse-supply-csv";
@@ -67,7 +70,7 @@ interface Props {
   orders: Order[];
   products?: SellerProductView[];
   displayOrderDate?: string;
-  sheetKind?: "temp" | "final" | "done";
+  sheetKind?: "temp" | "final" | "done" | "all";
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
   onToggleAll?: (checked: boolean) => void;
@@ -91,9 +94,61 @@ const VENDOR_COMPACT: Record<string, string> = {
   "셀틱 입금액": "셀틱",
 };
 
+const COLUMN_WIDTHS: Record<
+  SpreadsheetColumnMode,
+  Partial<Record<string, string>>
+> = {
+  seller: {
+    발주일자: "w-[5%]",
+    제품명: "w-[19%]",
+    수량: "w-[3%]",
+    주문자: "w-[5%]",
+    수령인: "w-[5%]",
+    연락처1: "w-[7%]",
+    연락처2: "w-[4%]",
+    우편번호: "w-[5%]",
+    주소: "w-[11%]",
+    배송메모: "w-[5%]",
+    판매가: "w-[6%]",
+    매입가: "w-[6%]",
+    마진: "w-[6%]",
+  },
+  completed: {
+    제품명: "w-[22%]",
+    수량: "w-[3%]",
+    주문자: "w-[5%]",
+    수령인: "w-[5%]",
+    연락처1: "w-[7%]",
+    연락처2: "w-[4%]",
+    우편번호: "w-[5%]",
+    주소: "w-[11%]",
+    배송메모: "w-[5%]",
+    판매가: "w-[6%]",
+    매입가: "w-[6%]",
+    마진: "w-[6%]",
+  },
+  vendor: {
+    발주일자: "w-[5%]",
+    제품명: "w-[14%]",
+    수량: "w-[3%]",
+    주문자: "w-[5%]",
+    수령인: "w-[5%]",
+    연락처1: "w-[7%]",
+    연락처2: "w-[4%]",
+    우편번호: "w-[5%]",
+    주소: "w-[10%]",
+    배송메모: "w-[5%]",
+    매입가: "w-[5%]",
+    택배비: "w-[4%]",
+    계: "w-[5%]",
+    "셀틱 입금액": "w-[6%]",
+  },
+};
+
 function sheetTitle(kind: Props["sheetKind"]): string {
   if (kind === "temp") return "임시 발주서";
   if (kind === "done") return "발주 완료";
+  if (kind === "all") return "전체 발주";
   return "최종 발주서";
 }
 
@@ -181,6 +236,19 @@ export default function OrderSpreadsheetTable({
   const supplyTotal = orders.reduce((sum, o) => sum + o.supplyTotal, 0);
 
   const showSelect = Boolean(selectedIds && onToggleSelect);
+  const selectedOrdersList =
+    showSelect && selectedIds && selectedIds.size > 0
+      ? orders.filter((o) => selectedIds.has(o.id))
+      : [];
+  const headerTotals =
+    columnMode === "seller" && selectedOrdersList.length > 0
+      ? sumOrderPriceFields(selectedOrdersList, products)
+      : priceTotals;
+  const headerSummaryLabel =
+    columnMode === "seller" && selectedOrdersList.length > 0
+      ? `선택 ${selectedOrdersList.length}건`
+      : null;
+
   const allSelected =
     showSelect &&
     orders.length > 0 &&
@@ -278,8 +346,6 @@ export default function OrderSpreadsheetTable({
   ) => {
     const price = orderPriceFields(order, products);
     switch (header) {
-      case "발주서":
-        return "";
       case "제품명":
         return row.productName;
       case "수량":
@@ -317,10 +383,10 @@ export default function OrderSpreadsheetTable({
   const cellClass = (header: string, extra?: string) => {
     const base = "border border-slate-300 px-0.5 py-0.5 align-middle";
     const align =
-      header === "제품명" || header === "주소"
-        ? "truncate text-left"
-        : header === "발주서"
-          ? "truncate text-left text-[9px] font-medium text-slate-700"
+      header === "제품명"
+        ? "break-words text-left leading-snug"
+        : header === "주소"
+          ? "truncate text-left"
           : isNumericHeader(header)
             ? "text-right tabular-nums"
             : "truncate text-center";
@@ -422,10 +488,93 @@ export default function OrderSpreadsheetTable({
   };
 
   const showStatus = true;
+  const showGroupSummaries = shouldShowExportGroupSummaries(sheetKind);
+  const exportedOrders = orders.filter((o) => o.status === "exported");
+  const nonExportedOrders = orders.filter((o) => o.status !== "exported");
   const completedGroups =
     columnMode === "completed"
       ? groupCompletedOrders(orders, shopName)
-      : [];
+      : showGroupSummaries
+        ? groupCompletedOrders(exportedOrders, shopName)
+        : [];
+
+  const renderGroupSummaryRow = (
+    group: CompletedGroup,
+    mode: "completed" | "vendor"
+  ) => {
+    const totals = sumOrderPriceFields(group.orders, products);
+    const label = `${group.title} · 합계 ${group.orders.length}건`;
+
+    if (mode === "completed") {
+      return (
+        <tr
+          key={`summary-${group.key}`}
+          className="bg-amber-50/80 font-semibold text-slate-800"
+        >
+          {showSelect && <td className="border border-slate-300" />}
+          {showStatus && <td className="border border-slate-300" />}
+          <td
+            colSpan={COMPLETED_SUMMARY_COLSPAN}
+            className="border border-slate-300 px-1 py-1 text-left text-[9px] leading-snug"
+            title={group.title}
+          >
+            {label}
+          </td>
+          <td className="border border-slate-300 px-0.5 py-1 text-right tabular-nums">
+            {formatNum(totals.salePrice)}
+          </td>
+          <td className="border border-slate-300 px-0.5 py-1 text-right tabular-nums">
+            {formatNum(totals.supplyTotal)}
+          </td>
+          <td className="border border-slate-300 px-0.5 py-1 text-right tabular-nums text-blue-800">
+            {formatNum(totals.margin)}
+          </td>
+          {renderRowActions && <td className="border border-slate-300" />}
+        </tr>
+      );
+    }
+
+    return (
+      <tr
+        key={`summary-${group.key}`}
+        className="bg-amber-50/80 font-semibold text-slate-800"
+      >
+        {showSelect && <td className="border border-slate-300" />}
+        {showStatus && <td className="border border-slate-300" />}
+        <td
+          colSpan={VENDOR_HEADERS.length}
+          className="border border-slate-300 px-1 py-1 text-left text-[9px] leading-snug"
+          title={group.title}
+        >
+          {label} · 판매 {formatNum(totals.salePrice)} · 매입{" "}
+          {formatNum(totals.supplyTotal)} · 마진{" "}
+          <span className="text-blue-800">{formatNum(totals.margin)}</span>
+        </td>
+        {renderRowActions && <td className="border border-slate-300" />}
+      </tr>
+    );
+  };
+
+  const renderBodyRows = () => {
+    if (columnMode === "completed") {
+      return completedGroups.flatMap((group) => [
+        renderGroupSummaryRow(group, "completed"),
+        ...group.orders.map((order) => renderDataRow(order)),
+      ]);
+    }
+
+    if (showGroupSummaries && completedGroups.length > 0) {
+      return [
+        ...completedGroups.flatMap((group) => [
+          renderGroupSummaryRow(group, "vendor"),
+          ...group.orders.map((order) => renderDataRow(order)),
+        ]),
+        ...nonExportedOrders.map((order) => renderDataRow(order)),
+      ];
+    }
+
+    return orders.map((order) => renderDataRow(order));
+  };
 
   return (
     <div className="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
@@ -441,16 +590,27 @@ export default function OrderSpreadsheetTable({
         <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
           {columnMode === "seller" ? (
             <>
+              {headerSummaryLabel && (
+                <span className="text-[10px] font-medium text-slate-500">
+                  {headerSummaryLabel}
+                </span>
+              )}
               <div className="rounded bg-slate-100 px-2 py-0.5 text-right">
                 <p className="text-[9px] text-slate-500">판매가</p>
                 <p className="text-xs font-bold tabular-nums">
-                  {formatKrw(priceTotals.salePrice)}
+                  {formatKrw(headerTotals.salePrice)}
+                </p>
+              </div>
+              <div className="rounded bg-emerald-50 px-2 py-0.5 text-right">
+                <p className="text-[9px] text-emerald-700">매입가</p>
+                <p className="text-xs font-bold tabular-nums text-emerald-900">
+                  {formatKrw(headerTotals.purchasePrice)}
                 </p>
               </div>
               <div className="rounded bg-blue-100 px-2 py-0.5 text-right">
                 <p className="text-[9px] text-blue-700">마진</p>
                 <p className="text-xs font-bold tabular-nums text-blue-900">
-                  {formatKrw(priceTotals.margin)}
+                  {formatKrw(headerTotals.margin)}
                 </p>
               </div>
             </>
@@ -489,8 +649,8 @@ export default function OrderSpreadsheetTable({
               <th
                 key={h}
                 className={`border border-slate-300 px-0.5 py-1 text-center font-semibold ${
-                  h === "셀틱 입금액" ? "bg-yellow-100" : ""
-                }`}
+                  COLUMN_WIDTHS[columnMode]?.[h] ?? ""
+                } ${h === "셀틱 입금액" ? "bg-yellow-100" : ""}`}
               >
                 {VENDOR_COMPACT[h] ?? h}
               </th>
@@ -502,46 +662,8 @@ export default function OrderSpreadsheetTable({
             )}
           </tr>
         </thead>
-        <tbody>
-          {columnMode === "completed"
-            ? completedGroups.flatMap((group) => {
-                const totals = sumOrderPriceFields(group.orders, products);
-                return [
-                  <tr
-                    key={`summary-${group.key}`}
-                    className="bg-amber-50/80 font-semibold text-slate-800"
-                  >
-                    {showSelect && <td className="border border-slate-300" />}
-                    {showStatus && <td className="border border-slate-300" />}
-                    <td
-                      colSpan={10}
-                      className="border border-slate-300 px-1 py-1 text-left text-[9px] leading-snug"
-                      title={group.title}
-                    >
-                      {group.title} · 합계 {group.orders.length}건 · 셀틱 입금액
-                    </td>
-                    <td className="border border-slate-300 px-0.5 py-1 text-right tabular-nums">
-                      {formatNum(totals.salePrice)}
-                    </td>
-                    <td
-                      className="border border-slate-300 px-0.5 py-1 text-right tabular-nums"
-                      title="셀틱 입금액 합계"
-                    >
-                      {formatNum(totals.celticDeposit)}
-                    </td>
-                    <td className="border border-slate-300 px-0.5 py-1 text-right tabular-nums text-blue-800">
-                      {formatNum(totals.margin)}
-                    </td>
-                    {renderRowActions && (
-                      <td className="border border-slate-300" />
-                    )}
-                  </tr>,
-                  ...group.orders.map((order) => renderDataRow(order)),
-                ];
-              })
-            : orders.map((order) => renderDataRow(order))}
-        </tbody>
-        {columnMode !== "completed" && (
+        <tbody>{renderBodyRows()}</tbody>
+        {columnMode !== "completed" && !showGroupSummaries && (
           <tfoot>
             <tr className="bg-slate-50 font-semibold text-slate-800">
               {showSelect && <td className="border border-slate-300" />}

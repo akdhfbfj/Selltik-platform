@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import OrderSpreadsheetTable from "@/components/OrderSpreadsheetTable";
@@ -52,7 +52,6 @@ export default function SellerOrdersPage() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [updatingOrder, setUpdatingOrder] = useState(false);
   const [savingShippingId, setSavingShippingId] = useState<string | null>(null);
-  const editFormRef = useRef<HTMLDivElement>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -95,7 +94,7 @@ export default function SellerOrdersPage() {
     if (searchQuery.trim()) {
       list = list.filter((o) => matchesOrderSearch(o, searchQuery));
     }
-    return list;
+    return [...list].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }, [orders, statusTab, searchQuery]);
 
   const tabCounts = useMemo(() => {
@@ -129,9 +128,6 @@ export default function SellerOrdersPage() {
 
   const openOrderEdit = (order: Order) => {
     setEditingOrder(order);
-    requestAnimationFrame(() => {
-      editFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
   };
 
   const handleUpdateOrder = async (payload: OrderEditState) => {
@@ -434,7 +430,9 @@ export default function SellerOrdersPage() {
       ? "temp"
       : statusTab === "exported"
         ? "done"
-        : "final";
+        : statusTab === "all"
+          ? "all"
+          : "final";
 
   const tabDescription =
     statusTab === "draft"
@@ -447,7 +445,7 @@ export default function SellerOrdersPage() {
 
   return (
     <div>
-      {!editingOrder && orders.length === 0 && !loading && (
+      {!orders.length && !loading && (
         <div className="mb-6 rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/40 p-5 text-center">
           <p className="text-sm text-slate-600">
             새 발주는{" "}
@@ -537,6 +535,28 @@ export default function SellerOrdersPage() {
         </div>
       )}
 
+      {editingOrder && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => !updatingOrder && setEditingOrder(null)}
+        >
+          <div
+            className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <OrderEditForm
+              key={editingOrder.id}
+              order={editingOrder}
+              products={products}
+              saving={updatingOrder}
+              inModal
+              onSave={handleUpdateOrder}
+              onCancel={() => setEditingOrder(null)}
+            />
+          </div>
+        </div>
+      )}
+
       <div
         id="export"
         className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
@@ -582,19 +602,6 @@ export default function SellerOrdersPage() {
             )}
           </div>
         </div>
-
-        {editingOrder && (
-          <div ref={editFormRef} className="mb-6">
-            <OrderEditForm
-              key={editingOrder.id}
-              order={editingOrder}
-              products={products}
-              saving={updatingOrder}
-              onSave={handleUpdateOrder}
-              onCancel={() => setEditingOrder(null)}
-            />
-          </div>
-        )}
 
         <div className="mb-4">
           <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-500">

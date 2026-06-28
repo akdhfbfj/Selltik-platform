@@ -47,7 +47,8 @@ export function orderPriceFields(
   const celticDeposit = order.celticDepositAmount ?? order.supplyTotal;
   return {
     salePrice: pricing.customerDepositAmount,
-    purchasePrice: order.purchasePrice,
+    /** 화면 매입가 = 매입+택배 (셀틱 입금액과 동일) */
+    purchasePrice: celticDeposit,
     supplyTotal: order.supplyTotal,
     celticDeposit,
     margin: pricing.customerDepositAmount - celticDeposit,
@@ -82,11 +83,18 @@ export function sumOrderPriceFields(
 export type SpreadsheetColumnMode = "vendor" | "seller" | "completed";
 
 export function columnModeForSheetKind(
-  kind: "temp" | "final" | "done"
+  kind: "temp" | "final" | "done" | "all"
 ): SpreadsheetColumnMode {
   if (kind === "temp") return "seller";
   if (kind === "done") return "completed";
+  if (kind === "all") return "vendor";
   return "vendor";
+}
+
+export function shouldShowExportGroupSummaries(
+  kind: "temp" | "final" | "done" | "all"
+): boolean {
+  return kind === "done" || kind === "all";
 }
 
 export const VENDOR_HEADERS = [
@@ -123,7 +131,6 @@ export const SELLER_HEADERS = [
 ] as const;
 
 export const COMPLETED_HEADERS = [
-  "발주서",
   "제품명",
   "수량",
   "주문자",
@@ -137,6 +144,9 @@ export const COMPLETED_HEADERS = [
   "매입가",
   "마진",
 ] as const;
+
+/** 발주 완료 요약 행 — 제품명~메모 열 병합 */
+export const COMPLETED_SUMMARY_COLSPAN = 9;
 
 export type CompletedGroup = {
   key: string;
@@ -170,7 +180,7 @@ export function groupCompletedOrders(
       };
     })
     .sort((a, b) => {
-      const dateCmp = b.orders[0].orderDate.localeCompare(a.orders[0].orderDate);
+      const dateCmp = a.orders[0].orderDate.localeCompare(b.orders[0].orderDate);
       if (dateCmp !== 0) return dateCmp;
       return (a.orders[0].exportSuffix ?? "").localeCompare(
         b.orders[0].exportSuffix ?? ""

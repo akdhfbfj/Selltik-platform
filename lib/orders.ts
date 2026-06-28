@@ -95,9 +95,11 @@ export async function buildOrderDraftBundle(
     orderDate?: string;
     /** true면 문자에서 추출한 이름만 — 공급가·매칭은 반영 단계에서 */
     rawOnly?: boolean;
+    products?: SellerProductView[];
   }
 ): Promise<OrderDraftBundle> {
-  const products = await getSellerProductViews(shopId);
+  const products =
+    options?.products ?? (await getSellerProductViews(shopId));
   const today = todayIso();
   const customerOrderDate = options?.customerOrderDate?.slice(0, 10) || today;
   const orderDate = options?.orderDate?.slice(0, 10) || today;
@@ -231,8 +233,8 @@ export async function getOrdersByShop(shopId: string): Promise<Order[]> {
     .from("orders")
     .select("*")
     .eq("shop_id", shopId)
-    .order("order_date", { ascending: false })
-    .order("created_at", { ascending: false });
+    .order("order_date", { ascending: true })
+    .order("created_at", { ascending: true });
   if (error) throw error;
   return (data ?? []).map(rowToOrder);
 }
@@ -328,7 +330,8 @@ export async function getDistinctExportSuffixes(
 export async function markOrdersExported(
   shopId: string,
   ids: string[],
-  exportSuffix: string
+  exportSuffix: string,
+  exportOrderDate: string
 ): Promise<void> {
   if (!ids.length) return;
   const supabase = createServerClient();
@@ -339,6 +342,7 @@ export async function markOrdersExported(
       status: "exported",
       updated_at: now,
       export_suffix: exportSuffix,
+      order_date: exportOrderDate.slice(0, 10),
     })
     .eq("shop_id", shopId)
     .in("id", ids);

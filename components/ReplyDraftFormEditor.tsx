@@ -334,10 +334,21 @@ export default function ReplyDraftFormEditor({
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600">
+            배송메모
+          </label>
+          <input
+            className={SELLER_INPUT_CLASS}
+            value={bundle.shippingMemo}
+            onChange={(e) => updateBundle({ shippingMemo: e.target.value })}
+            placeholder="묶음배송, 부재 시 연락 등"
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="mb-1 block text-xs font-medium text-slate-600">
             우편번호
           </label>
           <input
-            className={`${SELLER_INPUT_CLASS} tabular-nums`}
+            className={`${SELLER_INPUT_CLASS} max-w-[8rem] tabular-nums`}
             value={bundle.postalCode}
             placeholder="주소 추출 후 자동 입력"
             onChange={(e) => updateBundle({ postalCode: e.target.value })}

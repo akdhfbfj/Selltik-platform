@@ -21,11 +21,12 @@ export async function POST(request: Request) {
     }
 
     const parsed = await parseOrderSmsWithLearning(text, shop.id);
+    const products = await getSellerProductViews(shop.id);
     const rawDraftBundle = await buildOrderDraftBundle(shop.id, parsed, text, {
       rawOnly: true,
+      products,
     });
 
-    const products = await getSellerProductViews(shop.id);
     const { bundle: draftBundle, changes } = await refineOrderDraftBundle(
       rawDraftBundle,
       products

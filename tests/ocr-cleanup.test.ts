@@ -7,6 +7,7 @@ import {
   extractAddressFromOcrText,
   mergeAddressDetail,
 } from "../lib/ocr-cleanup";
+import { ocrPreprocessScale } from "../lib/extract-image-text";
 
 test("cleanOcrProductName: 2<9 → 2kg", () => {
   assert.equal(cleanOcrProductName("하미과메론 2<9"), "하미과메론 2kg");
@@ -47,4 +48,9 @@ test("extractAddressFromOcrText: 도로명 주소 복원", () => {
   assert.ok(addr.includes("금강로"));
   assert.ok(addr.includes("1567-31"));
   assert.ok(addr.includes("남양주"));
+});
+
+test("ocrPreprocessScale: 작은 스크린샷은 적당히 확대", () => {
+  assert.ok(ocrPreprocessScale(400, 800) >= 1.5);
+  assert.ok(ocrPreprocessScale(1080, 1920) <= 1.5);
 });

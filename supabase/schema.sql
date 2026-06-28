@@ -201,4 +201,50 @@ create index if not exists idx_vendor_proposals_contact on vendor_proposals(cont
 create index if not exists idx_curated_items_proposal on curated_items(proposal_id, sort_order);
 create index if not exists idx_curated_items_contact on curated_items(contact_id, status);
 
+-- ── 셀러 자기계발 · 방송 기록 ──
+create table if not exists marketing_quotes (
+  id text primary key,
+  body text not null,
+  book_title text not null default '',
+  author text not null default '',
+  category text not null default 'general',
+  sort_order integer not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists seller_broadcasts (
+  id text primary key,
+  shop_id text not null references shops(id) on delete cascade,
+  broadcast_date date not null,
+  start_time time,
+  end_time time,
+  revenue integer not null default 0,
+  memo text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_seller_broadcasts_shop_date
+  on seller_broadcasts(shop_id, broadcast_date desc);
+
+create table if not exists seller_monthly_goals (
+  shop_id text not null references shops(id) on delete cascade,
+  month_key text not null,
+  target_revenue integer not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (shop_id, month_key)
+);
+
+create table if not exists seller_daily_goals (
+  shop_id text not null references shops(id) on delete cascade,
+  date_key text not null,
+  target_revenue integer not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (shop_id, date_key)
+);
+
+create index if not exists idx_seller_daily_goals_shop_date
+  on seller_daily_goals(shop_id, date_key desc);
+
 -- Storage: Dashboard > Storage > New bucket > name: uploads > Public bucket

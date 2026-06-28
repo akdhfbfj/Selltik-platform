@@ -401,3 +401,62 @@ export type OrderDateStatusCounts = {
   paid: number;
   exported: number;
 };
+
+export interface MarketingQuote {
+  id: string;
+  body: string;
+  bookTitle: string;
+  author: string;
+  category: string;
+}
+
+export interface SellerBroadcast {
+  id: string;
+  shopId: string;
+  broadcastDate: string;
+  startTime: string | null;
+  endTime: string | null;
+  revenue: number;
+  memo: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SellerBroadcastInput {
+  broadcastDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  revenue: number;
+  memo?: string;
+}
+
+export interface SellerGrowthStats {
+  monthKey: string;
+  targetRevenue: number;
+  broadcastRevenueTotal: number;
+  achievementPct: number;
+  dateKey: string;
+  dailyTargetRevenue: number;
+  dailyBroadcastRevenue: number;
+  dailyAchievementPct: number;
+  recentAvgRevenue: number;
+  broadcastCount: number;
+  orderSalesTotal: number;
+  orderMarginTotal: number;
+  orderCount: number;
+}
+
+export interface SellerReflectionEntry {
+  broadcastId: string;
+  date: string;
+  text: string;
+}
+
+export interface SellerOrderDailyMetric {
+  date: string;
+  day: number;
+  sales: number;
+  margin: number;
+  cumulativeSales: number;
+  cumulativeMargin: number;
+}

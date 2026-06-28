@@ -77,7 +77,12 @@ export async function POST(request: Request) {
     const buffer = buildOrderXlsxBuffer(shop.name, orders, dateIso);
 
     if (mode === "final") {
-      await markOrdersExported(shop.id, orders.map((o) => o.id), fileSuffix);
+      await markOrdersExported(
+        shop.id,
+        orders.map((o) => o.id),
+        fileSuffix,
+        dateIso
+      );
     }
 
     const filename = orderExportFilename(shop.name, dateIso, {
