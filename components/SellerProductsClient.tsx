@@ -519,7 +519,7 @@ export default function SellerProductsClient({
                     상품명
                   </th>
                   <th className="border border-l-0 border-slate-300 bg-slate-100 px-2 py-2 text-right text-xs font-semibold text-slate-600">
-                    매입
+                    매입가
                   </th>
                   <th className="border border-l-0 border-slate-300 bg-emerald-100/90 px-2 py-2 text-right">
                     <SortablePriceHeader
@@ -678,7 +678,7 @@ export default function SellerProductsClient({
                             : "bg-slate-50/80 text-slate-600"
                         }`}
                       >
-                        {formatKrw(p.purchasePrice)}
+                        {formatKrw(p.supplyTotal)}
                       </td>
                       <td
                         className={`whitespace-nowrap align-middle border border-l-0 border-slate-300 px-2 py-1.5 text-right text-[11px] font-semibold tabular-nums ${

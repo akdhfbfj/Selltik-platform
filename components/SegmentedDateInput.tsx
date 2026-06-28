@@ -44,6 +44,7 @@ export default function SegmentedDateInput({
   const dayRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (!value) return;
     const parts = splitIso(value);
     setYear(parts.year);
     setMonth(parts.month);
@@ -52,8 +53,9 @@ export default function SegmentedDateInput({
 
   const emit = (y: string, m: string, d: string) => {
     const iso = toIso(y, m, d);
+    if (!iso) return;
     onChange(iso);
-    if (iso && onComplete) onComplete(iso);
+    if (onComplete) onComplete(iso);
   };
 
   const handleYear = (raw: string) => {
@@ -79,13 +81,7 @@ export default function SegmentedDateInput({
   const handleDay = (raw: string) => {
     const digits = raw.replace(/\D/g, "").slice(0, 2);
     setDay(digits);
-    const iso = toIso(year, month, digits);
-    if (iso) {
-      onChange(iso);
-      if (digits.length === 2 && onComplete) onComplete(iso);
-    } else {
-      onChange("");
-    }
+    emit(year, month, digits);
   };
 
   const inputClass =
