@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { createServerClient } from "./supabase/server";
-import { getShopOrderMetricsBundleForMonth, currentMonthKey } from "./seller-order-metrics";
+import { getShopOrderMetricsBundleForMonth, getShopOrderMetricsForDate, currentMonthKey } from "./seller-order-metrics";
 import type {
   SellerBroadcast,
   SellerBroadcastInput,
@@ -267,6 +267,8 @@ function emptyStats(monthKey: string, dateKey: string): SellerGrowthStats {
     orderSalesTotal: 0,
     orderMarginTotal: 0,
     orderCount: 0,
+    dailyOrderSales: 0,
+    dailyOrderMargin: 0,
   };
 }
 
@@ -282,31 +284,51 @@ export async function getSellerGrowthStats(
 ): Promise<SellerGrowthStats> {
   const dateKey = currentDateKey();
 
+  const orderBundle = orderMetrics
+    ? {
+        salesTotal: orderMetrics.salesTotal,
+        marginTotal: orderMetrics.marginTotal,
+        orderCount: orderMetrics.orderCount,
+        dailyMetrics: [] as SellerOrderDailyMetric[],
+      }
+    : await safeValue(
+        () => getShopOrderMetricsBundleForMonth(shopId, monthKey),
+        {
+          salesTotal: 0,
+          marginTotal: 0,
+          orderCount: 0,
+          dailyMetrics: [] as SellerOrderDailyMetric[],
+        }
+      );
+
+  const dateInSelectedMonth = dateKey.startsWith(`${monthKey}-`);
+  let dailyOrderSales = 0;
+  let dailyOrderMargin = 0;
+  if (dateInSelectedMonth) {
+    const dayMetric = orderBundle.dailyMetrics.find((m) => m.date === dateKey);
+    dailyOrderSales = dayMetric?.sales ?? 0;
+    dailyOrderMargin = dayMetric?.margin ?? 0;
+  } else {
+    const todayMetrics = await safeValue(
+      () => getShopOrderMetricsForDate(shopId, dateKey),
+      { sales: 0, margin: 0 }
+    );
+    dailyOrderSales = todayMetrics.sales;
+    dailyOrderMargin = todayMetrics.margin;
+  }
+
   const [
     broadcasts,
     targetRevenue,
     dailyTargetRevenue,
-    dailyBroadcastRevenue,
     recent,
-    orderTotals,
   ] = await Promise.all([
     monthBroadcasts
       ? Promise.resolve(monthBroadcasts)
       : getBroadcastsForMonth(shopId, monthKey),
     safeValue(() => getMonthlyTarget(shopId, monthKey), 0),
     safeValue(() => getDailyTarget(shopId, dateKey), 0),
-    safeValue(() => getBroadcastRevenueForDate(shopId, dateKey), 0),
     safeValue(() => getRecentBroadcasts(shopId, 4), [] as SellerBroadcast[]),
-    orderMetrics
-      ? Promise.resolve(orderMetrics)
-      : safeValue(
-          () => getShopOrderMetricsBundleForMonth(shopId, monthKey),
-          { salesTotal: 0, marginTotal: 0, orderCount: 0, dailyMetrics: [] }
-        ).then((b) => ({
-          salesTotal: b.salesTotal,
-          marginTotal: b.marginTotal,
-          orderCount: b.orderCount,
-        })),
   ]);
 
   const broadcastRevenueTotal = broadcasts.reduce((s, b) => s + b.revenue, 0);
@@ -316,11 +338,11 @@ export async function getSellerGrowthStats(
       : 0;
   const achievementPct =
     targetRevenue > 0
-      ? Math.round((broadcastRevenueTotal / targetRevenue) * 100)
+      ? Math.round((orderBundle.salesTotal / targetRevenue) * 100)
       : 0;
   const dailyAchievementPct =
     dailyTargetRevenue > 0
-      ? Math.round((dailyBroadcastRevenue / dailyTargetRevenue) * 100)
+      ? Math.round((dailyOrderSales / dailyTargetRevenue) * 100)
       : 0;
 
   return {
@@ -330,13 +352,15 @@ export async function getSellerGrowthStats(
     achievementPct,
     dateKey,
     dailyTargetRevenue,
-    dailyBroadcastRevenue,
+    dailyBroadcastRevenue: 0,
     dailyAchievementPct,
     recentAvgRevenue,
     broadcastCount: broadcasts.length,
-    orderSalesTotal: orderTotals.salesTotal,
-    orderMarginTotal: orderTotals.marginTotal,
-    orderCount: orderTotals.orderCount,
+    orderSalesTotal: orderBundle.salesTotal,
+    orderMarginTotal: orderBundle.marginTotal,
+    orderCount: orderBundle.orderCount,
+    dailyOrderSales,
+    dailyOrderMargin,
   };
 }
 
@@ -447,6 +471,22 @@ export async function getSellerGrowthDashboard(
   const broadcasts = broadcastsResult;
   const reflections = parseReflectionEntries(reflectionResult);
   const orderDailyMetrics = orderResult.dailyMetrics;
+
+  let dailyOrderSales = 0;
+  let dailyOrderMargin = 0;
+  if (dateInSelectedMonth) {
+    const dayMetric = orderDailyMetrics.find((m) => m.date === dateKey);
+    dailyOrderSales = dayMetric?.sales ?? 0;
+    dailyOrderMargin = dayMetric?.margin ?? 0;
+  } else {
+    const todayMetrics = await safeValue(
+      () => getShopOrderMetricsForDate(shopId, dateKey),
+      { sales: 0, margin: 0 }
+    );
+    dailyOrderSales = todayMetrics.sales;
+    dailyOrderMargin = todayMetrics.margin;
+  }
+
   const dailyBroadcastRevenue = dateInSelectedMonth
     ? broadcasts
         .filter((b) => b.broadcastDate === dateKey)
@@ -460,11 +500,11 @@ export async function getSellerGrowthDashboard(
       : 0;
   const achievementPct =
     targetRevenue > 0
-      ? Math.round((broadcastRevenueTotal / targetRevenue) * 100)
+      ? Math.round((orderResult.salesTotal / targetRevenue) * 100)
       : 0;
   const dailyAchievementPct =
     dailyTargetRevenue > 0
-      ? Math.round((dailyBroadcastRevenue / dailyTargetRevenue) * 100)
+      ? Math.round((dailyOrderSales / dailyTargetRevenue) * 100)
       : 0;
 
   const stats: SellerGrowthStats = {
@@ -481,6 +521,8 @@ export async function getSellerGrowthDashboard(
     orderSalesTotal: orderResult.salesTotal,
     orderMarginTotal: orderResult.marginTotal,
     orderCount: orderResult.orderCount,
+    dailyOrderSales,
+    dailyOrderMargin,
   };
 
   return { stats, broadcasts, reflections, orderDailyMetrics, dbError };

@@ -444,6 +444,9 @@ export interface SellerGrowthStats {
   orderSalesTotal: number;
   orderMarginTotal: number;
   orderCount: number;
+  /** 오늘 발주 확정(paid/exported) 판매·마진 */
+  dailyOrderSales: number;
+  dailyOrderMargin: number;
 }
 
 export interface SellerReflectionEntry {

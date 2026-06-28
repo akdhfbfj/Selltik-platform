@@ -162,6 +162,40 @@ export async function getShopOrderMetricsBundleForMonth(
   };
 }
 
+async function sumOrderMetricsForRows(
+  shopId: string,
+  orders: OrderMetricsRow[]
+): Promise<{ sales: number; margin: number }> {
+  if (orders.length === 0) return { sales: 0, margin: 0 };
+  const products = await getSellerProductViews(shopId);
+  const lookup = buildProductLookup(products);
+  let sales = 0;
+  let margin = 0;
+  for (const order of orders) {
+    const p = metricsRowPriceFields(order, lookup);
+    sales += p.salePrice;
+    margin += p.margin;
+  }
+  return { sales, margin };
+}
+
+/** 특정일 발주 확정(paid/exported) 판매·마진 */
+export async function getShopOrderMetricsForDate(
+  shopId: string,
+  dateKey: string
+): Promise<{ sales: number; margin: number }> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("orders")
+    .select(ORDER_METRICS_COLUMNS)
+    .eq("shop_id", shopId)
+    .eq("order_date", dateKey)
+    .in("status", ["paid", "exported"]);
+  if (error) throw error;
+  const orders = (data ?? []).map((row) => rowToOrderMetricsRow(row as never));
+  return sumOrderMetricsForRows(shopId, orders);
+}
+
 /** 해당 월 확정 발주(paid/exported) 판매가·마진 합계 */
 export async function getShopOrderMetricsForMonth(
   shopId: string,

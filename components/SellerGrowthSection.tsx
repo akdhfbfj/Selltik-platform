@@ -78,6 +78,8 @@ function GoalRow({
   saving,
   revenueLabel,
   revenueValue,
+  marginLabel,
+  marginValue,
   revenueAccent,
   achievementPct,
   hasTarget,
@@ -89,12 +91,14 @@ function GoalRow({
   saving: boolean;
   revenueLabel: string;
   revenueValue: string;
+  marginLabel: string;
+  marginValue: string;
   revenueAccent: string;
   achievementPct: number;
   hasTarget: boolean;
 }) {
   return (
-    <div className="grid items-center gap-x-2 gap-y-2 rounded-xl border border-slate-200 bg-white/70 px-3 py-2.5 sm:grid-cols-[8.5rem_9rem_2.75rem_auto_auto]">
+    <div className="grid items-center gap-x-2 gap-y-2 rounded-xl border border-slate-200 bg-white/70 px-3 py-2.5 sm:grid-cols-[8.5rem_9rem_2.75rem_1fr_auto]">
       <span className="truncate text-xs font-semibold text-slate-700">{label}</span>
       <input
         type="text"
@@ -111,7 +115,10 @@ function GoalRow({
       >
         저장
       </button>
-      <InlineStat label={revenueLabel} value={revenueValue} accent={revenueAccent} />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <InlineStat label={revenueLabel} value={revenueValue} accent={revenueAccent} />
+        <InlineStat label={marginLabel} value={marginValue} accent="text-emerald-700" />
+      </div>
       <div className="flex items-center gap-2 sm:justify-end">
         <InlineStat
           label="달성"
@@ -158,13 +165,33 @@ function parseDigits(raw: string): number {
   return Number(raw.replace(/\D/g, "") || 0);
 }
 
+function formatTimeInputField(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+}
+
 function parseTimeInput(val: string): string | null {
   const v = val.trim();
   if (!v) return null;
-  const match = v.match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
+
+  let hour: number | null = null;
+  let minute: number | null = null;
+
+  const colonMatch = v.match(/^(\d{1,2}):(\d{2})$/);
+  if (colonMatch) {
+    hour = Number(colonMatch[1]);
+    minute = Number(colonMatch[2]);
+  } else {
+    const digits = v.replace(/\D/g, "");
+    if (digits.length >= 3 && digits.length <= 4) {
+      const padded = digits.padStart(4, "0");
+      hour = Number(padded.slice(0, 2));
+      minute = Number(padded.slice(2, 4));
+    }
+  }
+
+  if (hour === null || minute === null) return null;
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
@@ -513,7 +540,9 @@ export default function SellerGrowthSection({ initialData }: Props) {
                 onSave={handleSaveTarget}
                 saving={savingTarget}
                 revenueLabel="매출"
-                revenueValue={formatKrw(stats.broadcastRevenueTotal)}
+                revenueValue={formatKrw(stats.orderSalesTotal)}
+                marginLabel="마진"
+                marginValue={formatKrw(stats.orderMarginTotal)}
                 revenueAccent="text-violet-700"
                 achievementPct={stats.achievementPct}
                 hasTarget={stats.targetRevenue > 0}
@@ -525,7 +554,9 @@ export default function SellerGrowthSection({ initialData }: Props) {
                 onSave={handleSaveDailyTarget}
                 saving={savingDailyTarget}
                 revenueLabel="오늘 매출"
-                revenueValue={formatKrw(stats.dailyBroadcastRevenue)}
+                revenueValue={formatKrw(stats.dailyOrderSales)}
+                marginLabel="오늘 마진"
+                marginValue={formatKrw(stats.dailyOrderMargin)}
                 revenueAccent="text-violet-700"
                 achievementPct={stats.dailyAchievementPct}
                 hasTarget={stats.dailyTargetRevenue > 0}
@@ -741,7 +772,10 @@ export default function SellerGrowthSection({ initialData }: Props) {
                     placeholder="19:30"
                     value={form.startTime}
                     onChange={(e) =>
-                      setForm((f) => ({ ...f, startTime: e.target.value }))
+                      setForm((f) => ({
+                        ...f,
+                        startTime: formatTimeInputField(e.target.value),
+                      }))
                     }
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                   />
@@ -754,7 +788,10 @@ export default function SellerGrowthSection({ initialData }: Props) {
                     placeholder="21:00"
                     value={form.endTime}
                     onChange={(e) =>
-                      setForm((f) => ({ ...f, endTime: e.target.value }))
+                      setForm((f) => ({
+                        ...f,
+                        endTime: formatTimeInputField(e.target.value),
+                      }))
                     }
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                   />
