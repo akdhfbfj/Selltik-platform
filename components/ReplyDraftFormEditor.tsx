@@ -199,7 +199,7 @@ export default function ReplyDraftFormEditor({
                 value={line.productId ?? ""}
                 onChange={(productId) => handleProductSelect(line.id, productId)}
                 placeholder="SKU·공급가표 상품명 검색"
-                seedQuery={rawProductNames[idx] ?? line.productName}
+                seedQuery=""
                 onFocus={closeAddressPicker}
               />
               {line.productMatch.matchedBy === "none" && (
@@ -340,7 +340,7 @@ export default function ReplyDraftFormEditor({
             className={SELLER_INPUT_CLASS}
             value={bundle.shippingMemo}
             onChange={(e) => updateBundle({ shippingMemo: e.target.value })}
-            placeholder="묶음배송, 부재 시 연락 등"
+            placeholder="부재 시 연락 등"
           />
         </div>
         <div className="sm:col-span-2">

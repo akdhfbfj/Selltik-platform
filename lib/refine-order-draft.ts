@@ -109,7 +109,7 @@ export async function refineOrderDraftBundle(
       {
         ...line,
         productId: null,
-        productName: rawName,
+        productName: "",
         productMatch: {
           productId: null,
           officialName: null,

@@ -136,7 +136,7 @@ export function buildDraftLineItem(
   return {
     id: uuidv4(),
     productId: product?.id ?? null,
-    productName: product?.officialName ?? productName,
+    productName: product?.officialName ?? "",
     quantity,
     purchasePrice: pricing.purchasePrice,
     shippingFee: pricing.shippingFee,
@@ -205,17 +205,7 @@ export function recalcAllDraftLines(
   );
 }
 
-export function emptyDraftLine(products: SellerProductView[]): OrderDraftLineItem {
-  if (products[0]) {
-    return buildDraftLineItem(
-      products,
-      products[0].officialName,
-      1,
-      "",
-      "",
-      false
-    );
-  }
+export function emptyDraftLine(_products?: SellerProductView[]): OrderDraftLineItem {
   return {
     id: uuidv4(),
     productId: null,

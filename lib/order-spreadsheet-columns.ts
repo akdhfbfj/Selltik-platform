@@ -42,13 +42,6 @@ export type OrderSpreadsheetRow = {
   celticDeposit: number;
 };
 
-function bundledMemo(order: Order, groupCounts: Map<string, number>): string {
-  const bundled = (groupCounts.get(orderPersonKey(order)) ?? 0) > 1;
-  if (bundled && !order.shippingMemo.trim()) return "묶음배송";
-  if (bundled) return order.shippingMemo.trim() || "묶음배송";
-  return order.shippingMemo;
-}
-
 export function buildGroupCounts(orders: Order[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const o of orders) {
@@ -90,7 +83,7 @@ export function orderToSpreadsheetRow(
     contactPhone2: order.contactPhone2,
     postalCode: order.postalCode,
     address: order.address,
-    shippingMemo: bundledMemo(order, groupCounts),
+    shippingMemo: order.shippingMemo,
     purchasePrice: order.purchasePrice,
     shippingFee: order.shippingFee === 0 ? "-" : order.shippingFee,
     supplyTotal: order.supplyTotal,

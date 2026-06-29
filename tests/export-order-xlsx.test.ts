@@ -53,7 +53,7 @@ describe("export-order-xlsx", () => {
     assert.equal(rows[3][13], 204000);
   });
 
-  it("발주일자 yy-mm-dd, 묶음배송 메모", () => {
+  it("발주일자 yy-mm-dd, 동일 수신인 묶음도 배송메모 자동 기입 없음", () => {
     const rows = buildOrderSheetRows(
       "광고몰",
       [
@@ -63,8 +63,8 @@ describe("export-order-xlsx", () => {
       exportDate
     );
     assert.equal(rows[3][0], "26-06-08");
-    assert.equal(rows[3][9], "묶음배송");
-    assert.equal(rows[4][9], "묶음배송");
+    assert.equal(rows[3][9], "");
+    assert.equal(rows[4][9], "");
     assert.equal(rows[3][13], 408000);
     assert.equal(rows[4][13], "");
   });
