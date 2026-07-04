@@ -107,15 +107,13 @@ export function toExcelDate(isoDate: string): number {
   return Math.round((d.getTime() - epoch.getTime()) / 86_400_000);
 }
 
-export function sumCelticDeposit(orders: Order[]): number {
-  return orders.reduce(
-    (sum, o) => sum + (o.celticDepositAmount ?? o.supplyTotal),
-    0
-  );
-}
-
 export function sumSupplyTotal(orders: Order[]): number {
   return orders.reduce((sum, o) => sum + o.supplyTotal, 0);
+}
+
+/** N4 셀틱 입금액 = M열(계) 합 — supply_total 단일 기준 */
+export function sumCelticDeposit(orders: Order[]): number {
+  return sumSupplyTotal(orders);
 }
 
 /** 같은 날 n번째 최종 발주서 파일 접미사: "", "A", "B", … */

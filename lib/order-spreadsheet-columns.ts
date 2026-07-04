@@ -87,7 +87,7 @@ export function orderToSpreadsheetRow(
     purchasePrice: order.purchasePrice,
     shippingFee: order.shippingFee === 0 ? "-" : order.shippingFee,
     supplyTotal: order.supplyTotal,
-    celticDeposit: order.celticDepositAmount ?? order.supplyTotal,
+    celticDeposit: order.supplyTotal,
   };
 }
 

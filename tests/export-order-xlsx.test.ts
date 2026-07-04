@@ -69,14 +69,23 @@ describe("export-order-xlsx", () => {
     assert.equal(rows[4][13], "");
   });
 
-  it("sumCelticDeposit", () => {
-    assert.equal(
-      sumCelticDeposit([
-        sampleOrder({ celticDepositAmount: 204000 }),
-        sampleOrder({ celticDepositAmount: 50000 }),
-      ]),
-      254000
+  it("sumCelticDeposit equals sumSupplyTotal (M열 = N4 기준)", () => {
+    const orders = [
+      sampleOrder({ supplyTotal: 204000, celticDepositAmount: 204000 }),
+      sampleOrder({ supplyTotal: 50000, celticDepositAmount: 99999 }),
+    ];
+    assert.equal(sumCelticDeposit(orders), sumSupplyTotal(orders));
+    assert.equal(sumCelticDeposit(orders), 254000);
+  });
+
+  it("N4 uses supply_total even when celtic_deposit_amount differs", () => {
+    const rows = buildOrderSheetRows(
+      "광고몰",
+      [sampleOrder({ supplyTotal: 100000, celticDepositAmount: 95000 })],
+      exportDate
     );
+    assert.equal(rows[3][12], 100000);
+    assert.equal(rows[3][13], 100000);
   });
 
   it("formatOrderDateShort", () => {
@@ -121,4 +130,5 @@ describe("export-order-xlsx", () => {
       150000
     );
   });
+
 });

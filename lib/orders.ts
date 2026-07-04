@@ -208,7 +208,7 @@ function toDbRow(
     purchase_price: input.purchasePrice,
     shipping_fee: input.shippingFee,
     supply_total: input.supplyTotal,
-    celtic_deposit_amount: input.celticDepositAmount ?? input.supplyTotal,
+    celtic_deposit_amount: input.supplyTotal,
     is_remote_area: input.isRemoteArea,
     raw_sms_text: input.rawSmsText?.trim() ?? "",
     status: input.status ?? "draft",

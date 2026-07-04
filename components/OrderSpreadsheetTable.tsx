@@ -229,10 +229,7 @@ export default function OrderSpreadsheetTable({
   const headers = getHeaders(columnMode);
   const groupCounts = buildGroupCounts(orders);
   const priceTotals = sumOrderPriceFields(orders, products);
-  const celticTotal = orders.reduce(
-    (sum, o) => sum + (o.celticDepositAmount ?? o.supplyTotal),
-    0
-  );
+  const celticTotal = orders.reduce((sum, o) => sum + o.supplyTotal, 0);
   const supplyTotal = orders.reduce((sum, o) => sum + o.supplyTotal, 0);
 
   const showSelect = Boolean(selectedIds && onToggleSelect);
