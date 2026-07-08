@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
-import { createOrder, formatOrderDbError } from "@/lib/orders";
+import {
+  BULK_CREATE_MAX,
+  createOrdersBulk,
+  formatOrderDbError,
+} from "@/lib/orders";
 import type { OrderDraftPreview } from "@/lib/types";
 import { requireSellerShop } from "@/lib/seller";
 
-const BULK_CREATE_MAX = 200;
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const shop = await requireSellerShop();
@@ -26,23 +30,7 @@ export async function POST(request: Request) {
       );
     }
 
-    let created = 0;
-    const errors: { index: number; error: string }[] = [];
-
-    for (let i = 0; i < orders.length; i++) {
-      const body = orders[i];
-      if (!body.productName?.trim()) {
-        errors.push({ index: i, error: "상품명이 비어 있습니다." });
-        continue;
-      }
-      try {
-        await createOrder(shop.id, body);
-        created++;
-      } catch (e) {
-        const err = e as { message?: string };
-        errors.push({ index: i, error: formatOrderDbError(err) });
-      }
-    }
+    const { created, errors } = await createOrdersBulk(shop.id, orders);
 
     if (created === 0 && errors.length > 0) {
       return NextResponse.json(

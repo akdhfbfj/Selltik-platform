@@ -242,6 +242,76 @@ export async function getOrdersByShop(shopId: string): Promise<Order[]> {
   return (data ?? []).map(rowToOrder);
 }
 
+export const BULK_CREATE_MAX = 200;
+
+export type BulkCreateOrderError = {
+  index: number;
+  error: string;
+};
+
+export type BulkCreateOrderResult = {
+  created: number;
+  errors: BulkCreateOrderError[];
+};
+
+const BULK_INSERT_CHUNK = 50;
+
+/** 대량 저장 — chunk insert 후 실패 chunk만 건별 재시도 */
+export async function createOrdersBulk(
+  shopId: string,
+  inputs: (OrderInput & { autoParsed?: ParsedOrderSms })[]
+): Promise<BulkCreateOrderResult> {
+  const supabase = createServerClient();
+  const now = new Date().toISOString();
+  let created = 0;
+  const errors: BulkCreateOrderError[] = [];
+
+  type PreparedRow = {
+    index: number;
+    row: Record<string, unknown>;
+  };
+
+  const prepared: PreparedRow[] = [];
+
+  for (let i = 0; i < inputs.length; i++) {
+    const body = inputs[i];
+    if (!body.productName?.trim()) {
+      errors.push({ index: i, error: "상품명이 비어 있습니다." });
+      continue;
+    }
+    prepared.push({
+      index: i,
+      row: {
+        id: uuidv4(),
+        ...toDbRow(body, shopId, now),
+        created_at: now,
+      },
+    });
+  }
+
+  for (let i = 0; i < prepared.length; i += BULK_INSERT_CHUNK) {
+    const chunk = prepared.slice(i, i + BULK_INSERT_CHUNK);
+    const rows = chunk.map((p) => p.row);
+    const { error } = await supabase.from("orders").insert(rows);
+
+    if (!error) {
+      created += chunk.length;
+      continue;
+    }
+
+    for (const p of chunk) {
+      const { error: rowError } = await supabase.from("orders").insert(p.row);
+      if (rowError) {
+        errors.push({ index: p.index, error: formatOrderDbError(rowError) });
+      } else {
+        created++;
+      }
+    }
+  }
+
+  return { created, errors };
+}
+
 export async function createOrder(
   shopId: string,
   input: OrderInput & { autoParsed?: ParsedOrderSms }

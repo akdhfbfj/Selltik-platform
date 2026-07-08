@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { bundleLineToOrderPayload } from "@/lib/order-draft-helpers";
+import { formatBulkSaveMessage } from "@/lib/save-order-bundles";
 import {
   SMS_IMPORT_STEPS,
   type SmsImportStepId,
@@ -268,11 +269,7 @@ export default function SmsImportWizard() {
 
     const created = data.created as number;
     const errCount = (data.errors as unknown[])?.length ?? 0;
-    setSaveMessage(
-      errCount > 0
-        ? `${created}건 저장됨. ${errCount}건 실패.`
-        : `${created}건 발주 초안이 저장되었습니다.`
-    );
+    setSaveMessage(formatBulkSaveMessage(created, errCount));
   };
 
   return (

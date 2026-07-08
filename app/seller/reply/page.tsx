@@ -330,7 +330,7 @@ export default function SellerReplyPage() {
     setSuccess("");
 
     const result = await saveOrderDraftBundles(
-      selected.map((q) => q.bundle)
+      selected.map((q) => ({ id: q.id, bundle: q.bundle, label: q.label }))
     );
 
     if (!result.ok) {
@@ -339,10 +339,25 @@ export default function SellerReplyPage() {
       return;
     }
 
-    const remaining = queue.filter((q) => !q.selected);
+    const savedIds = new Set(result.savedQueueIds);
+    const remaining = queue.filter((q) => !savedIds.has(q.id));
     setQueue(remaining);
     saveReplyDraftQueue(remaining);
     setSavingToOrders(false);
+
+    if (result.failedLines > 0) {
+      const detail =
+        result.errors.length > 0
+          ? ` (${result.errors
+              .slice(0, 2)
+              .map((e) => e.label)
+              .join(", ")}${result.errors.length > 2 ? " …" : ""})`
+          : "";
+      setError(`${result.message}${detail}`);
+      return;
+    }
+
+    setSuccess(result.message);
     router.push("/seller/orders?tab=draft");
   }, [queue, router]);
 
