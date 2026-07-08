@@ -9,7 +9,6 @@ import { calcOrderPricing } from "@/lib/order-pricing";
 import { formatKrw } from "@/lib/parse-supply-csv";
 import { formatPhoneLiveInput } from "@/lib/parse-order-sms";
 import {
-  buildDraftLineItem,
   emptyDraftLine,
   recalcAllDraftLines,
   recalcDraftLineItem,
@@ -70,21 +69,42 @@ export default function ReplyDraftFormEditor({
   };
 
   const handleProductSelect = (lineId: string, productId: string) => {
+    if (!productId) {
+      onChange({
+        ...bundle,
+        lines: bundle.lines.map((line) => {
+          if (line.id !== lineId) return line;
+          return { ...emptyDraftLine(), id: line.id, quantity: line.quantity };
+        }),
+      });
+      return;
+    }
+
     const product = products.find((p) => p.id === productId);
     if (!product) return;
+
     onChange({
       ...bundle,
       lines: bundle.lines.map((line) => {
         if (line.id !== lineId) return line;
-        const built = buildDraftLineItem(
+        const next: OrderDraftLineItem = {
+          ...line,
+          productId: product.id,
+          productName: product.officialName,
+          productMatch: {
+            productId: product.id,
+            officialName: product.officialName,
+            matchedBy: "official_name",
+            consumerPrice: product.consumerPrice,
+          },
+        };
+        return recalcDraftLineItem(
+          next,
           products,
-          product.officialName,
-          line.quantity,
           bundle.postalCode,
           bundle.address,
           bundle.isRemoteArea
         );
-        return { ...built, id: line.id, quantity: line.quantity };
       }),
     });
   };
