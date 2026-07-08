@@ -12,6 +12,7 @@ import OrderEditForm, {
 import { sumCelticDeposit } from "@/lib/export-order-xlsx";
 import { findDuplicateOrders } from "@/lib/order-duplicates";
 import { matchesOrderSearch } from "@/lib/order-search";
+import type { CompletedGroup } from "@/lib/order-spreadsheet-display";
 import { formatKrw } from "@/lib/parse-supply-csv";
 import { SELLER_INPUT_CLASS } from "@/lib/seller-ui";
 import type { Order, OrderListTab, SellerProductView } from "@/lib/types";
@@ -52,6 +53,9 @@ export default function SellerOrdersPage() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [updatingOrder, setUpdatingOrder] = useState(false);
   const [savingShippingId, setSavingShippingId] = useState<string | null>(null);
+  const [downloadingGroupKey, setDownloadingGroupKey] = useState<string | null>(
+    null
+  );
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -425,6 +429,46 @@ export default function SellerOrdersPage() {
     setExporting(false);
   };
 
+  const handleRedownloadGroup = async (group: CompletedGroup) => {
+    if (group.orders.length === 0) return;
+    const orderDate = group.orders[0].orderDate;
+    setDownloadingGroupKey(group.key);
+    setError("");
+    setSuccess("");
+
+    const res = await fetch("/api/seller/orders/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        orderIds: group.orders.map((o) => o.id),
+        exportOrderDate: orderDate,
+        mode: "redownload",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error || "발주서 다운로드에 실패했습니다.");
+    } else {
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = disposition.match(/filename\*=UTF-8''(.+)/);
+      const filename = match
+        ? decodeURIComponent(match[1])
+        : `${group.title}.xlsx`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      setSuccess(
+        `${group.orders.length}건 발주서를 다시 내려받았습니다. (${group.title})`
+      );
+    }
+    setDownloadingGroupKey(null);
+  };
+
   const sheetKind =
     statusTab === "draft"
       ? "temp"
@@ -440,7 +484,7 @@ export default function SellerOrdersPage() {
       : statusTab === "paid"
         ? "입금 완료 건만 모입니다. 여기서 xlsx를 내려받으면 셀틱 발주가 확정됩니다."
         : statusTab === "exported"
-          ? "이미 최종 발주서로 내려받은 건입니다."
+          ? "이미 최종 발주서로 내려받은 건입니다. 노란 그룹에서 발주서를 다시 받을 수 있습니다."
           : "전체 발주 목록입니다.";
 
   return (
@@ -739,6 +783,10 @@ export default function SellerOrdersPage() {
                 </button>
               </div>
             )}
+            onDownloadGroup={
+              statusTab === "exported" ? handleRedownloadGroup : undefined
+            }
+            downloadingGroupKey={downloadingGroupKey}
           />
         )}
       </div>

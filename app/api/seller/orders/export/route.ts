@@ -22,17 +22,11 @@ export async function POST(request: Request) {
     const { orderIds, exportOrderDate, mode = "final" } = (await request.json()) as {
       orderIds?: string[];
       exportOrderDate?: string;
-      mode?: "preview" | "final";
+      mode?: "preview" | "final" | "redownload";
     };
     if (!orderIds?.length) {
       return NextResponse.json(
         { error: "보낼 발주를 선택해 주세요." },
-        { status: 400 }
-      );
-    }
-    if (!exportOrderDate?.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(exportOrderDate)) {
-      return NextResponse.json(
-        { error: "발주일(YYYY-MM-DD)을 입력해 주세요." },
         { status: 400 }
       );
     }
@@ -42,6 +36,54 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "선택한 발주를 찾을 수 없습니다." },
         { status: 404 }
+      );
+    }
+
+    if (mode === "redownload") {
+      const notExported = orders.filter((o) => o.status !== "exported");
+      if (notExported.length > 0) {
+        return NextResponse.json(
+          {
+            error: `발주 완료 건만 다시 내려받을 수 있습니다. (${notExported.length}건 제외)`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const dateIso = orders[0].orderDate.slice(0, 10);
+      const suffix = orders[0].exportSuffix ?? "";
+      const mixedGroup = orders.some(
+        (o) =>
+          o.orderDate.slice(0, 10) !== dateIso ||
+          (o.exportSuffix ?? "") !== suffix
+      );
+      if (mixedGroup) {
+        return NextResponse.json(
+          { error: "한 발주서 그룹씩만 다시 내려받을 수 있습니다." },
+          { status: 400 }
+        );
+      }
+
+      const buffer = buildOrderXlsxBuffer(shop.name, orders, dateIso);
+      const filename = orderExportFilename(shop.name, dateIso, {
+        kind: "final",
+        suffix,
+      });
+      const encoded = encodeURIComponent(filename);
+
+      return new NextResponse(new Uint8Array(buffer), {
+        headers: {
+          "Content-Type":
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename*=UTF-8''${encoded}`,
+        },
+      });
+    }
+
+    if (!exportOrderDate?.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(exportOrderDate)) {
+      return NextResponse.json(
+        { error: "발주일(YYYY-MM-DD)을 입력해 주세요." },
+        { status: 400 }
       );
     }
 

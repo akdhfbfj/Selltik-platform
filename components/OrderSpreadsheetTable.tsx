@@ -19,6 +19,7 @@ import {
 import { formatKrw } from "@/lib/parse-supply-csv";
 import type { Order, SellerProductView } from "@/lib/types";
 import { ORDER_STATUS_LABELS } from "@/lib/types";
+import { Download, Loader2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 function ShippingFeeCell({
@@ -81,6 +82,8 @@ interface Props {
   onShippingFeeChange?: (order: Order, shippingFee: number) => void;
   renderRowActions?: (order: Order) => ReactNode;
   emptyMessage?: string;
+  onDownloadGroup?: (group: CompletedGroup) => void;
+  downloadingGroupKey?: string | null;
 }
 
 const VENDOR_COMPACT: Record<string, string> = {
@@ -224,6 +227,8 @@ export default function OrderSpreadsheetTable({
   onShippingFeeChange,
   renderRowActions,
   emptyMessage = "표시할 발주가 없습니다.",
+  onDownloadGroup,
+  downloadingGroupKey,
 }: Props) {
   const columnMode = columnModeForSheetKind(sheetKind);
   const headers = getHeaders(columnMode);
@@ -515,7 +520,27 @@ export default function OrderSpreadsheetTable({
             className="border border-slate-300 px-1 py-1 text-left text-[9px] leading-snug"
             title={group.title}
           >
-            {label}
+            <div className="flex w-full flex-wrap items-center justify-between gap-2">
+              <span className="min-w-0">{label}</span>
+              {onDownloadGroup && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDownloadGroup(group);
+                  }}
+                  disabled={downloadingGroupKey === group.key}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2 py-0.5 text-[9px] font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {downloadingGroupKey === group.key ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Download className="h-3 w-3" />
+                  )}
+                  발주서 다운로드
+                </button>
+              )}
+            </div>
           </td>
           <td className="border border-slate-300 px-0.5 py-1 text-right tabular-nums">
             {formatNum(totals.salePrice)}
