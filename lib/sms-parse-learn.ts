@@ -1,4 +1,7 @@
 import {
+  cleanParsedPersonName,
+  finalizePersonFields,
+  looksLikePhoneValue,
   normalizePhone,
   type ParsedOrderSms,
   parseOrderSms,
@@ -121,6 +124,13 @@ function inferLabelRegex(
   if (prefix.length < 1 || prefix.length > 15) return null;
   if (/\d{5,}/.test(prefix)) return null;
 
+  if (field === "ordererName" || field === "recipientName") {
+    return new RegExp(
+      `^${escapeRegex(prefix)}\\s*[:：.]?\\s*([가-힣]{2,5})`,
+      "i"
+    );
+  }
+
   return new RegExp(`^${escapeRegex(prefix)}\\s*[:：]?\\s*(.+)$`, "i");
 }
 
@@ -150,9 +160,12 @@ function setLearnedField(
     result.postalCode = val.replace(/\D/g, "").slice(0, 5);
     return;
   }
-  if (field === "ordererName") result.ordererName = val;
-  else if (field === "recipientName") result.recipientName = val;
-  else if (field === "shippingMemo") result.shippingMemo = val;
+  if (field === "ordererName" || field === "recipientName") {
+    const name = cleanParsedPersonName(val);
+    if (name) result[field] = name;
+    return;
+  }
+  if (field === "shippingMemo") result.shippingMemo = val;
 }
 
 /** 학습된 라벨 패턴으로 빈 필드·오인식 필드 보정 */
@@ -175,12 +188,22 @@ export function applyLearnedLabelPatterns(
       const extracted = m[1].trim();
       const current = String(result[field] ?? "").trim();
 
-      const shouldApply =
-        !current ||
-        (hits >= 2 && current !== extracted && current.length < extracted.length);
-
-      if (shouldApply) {
-        setLearnedField(result, field, extracted);
+      let shouldApply = false;
+      if (field === "ordererName" || field === "recipientName") {
+        const cleaned = cleanParsedPersonName(extracted);
+        if (!cleaned) continue;
+        const currentClean = cleanParsedPersonName(current);
+        shouldApply =
+          !currentClean ||
+          (hits >= 2 && currentClean !== cleaned && looksLikePhoneValue(current));
+        if (shouldApply) setLearnedField(result, field, cleaned);
+      } else {
+        shouldApply =
+          !current ||
+          (hits >= 2 &&
+            current !== extracted &&
+            current.length < extracted.length);
+        if (shouldApply) setLearnedField(result, field, extracted);
       }
       break;
     }
@@ -308,7 +331,7 @@ export function applySmsLearnings(
   const productHints = extractProductHints(samples.shopProduct);
   result = applyProductHints(result, rawText, productHints);
 
-  return result;
+  return finalizePersonFields(result);
 }
 
 /** 규칙 파싱 + 누적 학습 반영 */

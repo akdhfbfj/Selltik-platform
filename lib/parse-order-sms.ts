@@ -89,39 +89,58 @@ function startsWithRegion(text: string): boolean {
 const ADDRESS_HINT =
   /(?:시|군|구|읍|면|동|리|로|길|호|아파트|APT|빌|타운|빌라|마을)/;
 
+const LABEL_SEP = "[.．:：\\s]+";
+
 const LABEL_PATTERNS: { key: keyof ParsedOrderSms; patterns: RegExp[] }[] = [
   {
     key: "ordererName",
     patterns: [
-      /^(?:주문자|주문인|보내는\s*분|보내는분|입금자(?:명)?|입금자)\s*[:：]?\s*(.+)$/i,
+      new RegExp(
+        `^(?:주문자|주문인|보내는\\s*분|보내는분|입금자(?:명)?|입금자)${LABEL_SEP}(.+)$`,
+        "i"
+      ),
     ],
   },
   {
     key: "recipientName",
     patterns: [
-      /^(?:받는\s*분|받는분|수령인|수취인|받으실\s*분|받는\s*사람|성명|성함|이름)\s*[:：]?\s*(.+)$/i,
+      new RegExp(
+        `^(?:받는\\s*분|받는분|수령인|수취인|받으실\\s*분|받는\\s*사람|성명|성함|이름)${LABEL_SEP}(.+)$`,
+        "i"
+      ),
     ],
   },
   {
     key: "contactPhone",
     patterns: [
-      /^(?:연락처\s*1?|휴대폰|핸드폰|핸|전화|받는분\s*전화(?:번호)?|연락처)\s*[:：]?\s*(.+)$/i,
+      new RegExp(
+        `^(?:연락처\\s*1?|휴대폰|핸드폰|핸|전화|받는분\\s*전화(?:번호)?|연락처)${LABEL_SEP}(.+)$`,
+        "i"
+      ),
     ],
   },
   {
     key: "contactPhone2",
-    patterns: [/^(?:연락처\s*2|보조\s*연락처)\s*[:：]?\s*(.+)$/i],
+    patterns: [
+      new RegExp(`^(?:연락처\\s*2|보조\\s*연락처)${LABEL_SEP}(.+)$`, "i"),
+    ],
   },
   {
     key: "address",
     patterns: [
-      /^(?:주소|배송지|도로명\s*주소|배송\s*주소)\s*[:：]?\s*(.+)$/i,
+      new RegExp(
+        `^(?:주소|배송지|도로명\\s*주소|배송\\s*주소)${LABEL_SEP}(.+)$`,
+        "i"
+      ),
     ],
   },
   {
     key: "shippingMemo",
     patterns: [
-      /^(?:배송\s*메모|배송메모|요청\s*사항|요청사항|배송\s*요청|메모)\s*[:：]?\s*(.+)$/i,
+      new RegExp(
+        `^(?:배송\\s*메모|배송메모|요청\\s*사항|요청사항|배송\\s*요청|메모)${LABEL_SEP}(.+)$`,
+        "i"
+      ),
     ],
   },
 ];
@@ -165,6 +184,141 @@ export function normalizePhone(raw: string): string {
     return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
   return raw.trim();
+}
+
+/** 주문자·수령인 칸에 들어가면 안 되는 전화번호 형태 */
+export function looksLikePhoneValue(raw: string): boolean {
+  const s = raw.trim();
+  if (!s) return false;
+  const digits = s.replace(/\D/g, "");
+  if (digits.length >= 10 && digits.length <= 11) {
+    const normalized =
+      digits.length === 10 ? `0${digits}` : digits;
+    if (/^01[016789]\d{8}$/.test(normalized)) return true;
+  }
+  if (new RegExp(`^${PHONE_PATTERN}$`).test(s.replace(/\s/g, ""))) return true;
+  if (/^[\d\s.\-]{10,}$/.test(s) && digits.length >= 10) return true;
+  return false;
+}
+
+function assignPhoneSlot(result: ParsedOrderSms, phone: string) {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return;
+  if (!result.contactPhone) {
+    result.contactPhone = normalized;
+    return;
+  }
+  if (result.contactPhone === normalized) return;
+  if (!result.contactPhone2) result.contactPhone2 = normalized;
+}
+
+/** 라벨·학습 등에서 추출한 문자열 → 주문자/수령인 이름 */
+export function cleanParsedPersonName(raw: string): string {
+  let s = raw.trim();
+  if (!s || looksLikePhoneValue(s)) return "";
+
+  s = stripPhones(s);
+  s = s
+    .replace(/^(?:주문자|주문인|받는\s*분|받는분|수령인|수취인)[.．:\s]+/i, "")
+    .replace(/[.．]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const token = s.match(/([가-힣]{2,5})/);
+  if (token && isLikelyPersonName(token[1])) return token[1];
+  return "";
+}
+
+function peelTrailingPersonName(address: string): {
+  address: string;
+  name: string;
+} {
+  const trimmed = address.trim();
+  const nameTail = trimmed.match(/\s([가-힣]{2,4})\s*$/);
+  if (nameTail && isLikelyPersonName(nameTail[1])) {
+    return {
+      address: trimmed.slice(0, nameTail.index).trim(),
+      name: nameTail[1],
+    };
+  }
+  return { address: trimmed, name: "" };
+}
+
+function looksLikeProductLine(line: string): boolean {
+  const s = stripQuantityFromProduct(line).replace(/[.．]+$/g, "").trim();
+  if (s.length < 2 || looksLikeAddress(s) || hasPhone(s)) return false;
+  if (isLikelyPersonName(s)) return false;
+  if (/(?:팬|세제|세트|냄비|캡슐|롤|백|색|매트|타월|컵|솥|칼|가위)/.test(s)) {
+    return true;
+  }
+  if (/[A-Za-z0-9]/.test(s)) return true;
+  if (s.length >= 5) return true;
+  return false;
+}
+
+function parseDotSeparatedLine(line: string): Partial<ParsedOrderSms> | null {
+  const trimmed = line.trim();
+  if (!/(?:주문자|주문인|받는\s*분|받는분|수령인|수취인)/i.test(trimmed)) {
+    return null;
+  }
+  if (!/[.．]/.test(trimmed) && !hasPhone(trimmed)) return null;
+
+  const partial: Partial<ParsedOrderSms> = {};
+  const phones = extractPhones(trimmed);
+  if (phones[0]) partial.contactPhone = phones[0];
+  if (phones[1]) partial.contactPhone2 = phones[1];
+
+  const nameMatch = trimmed.match(
+    /(?:주문자|주문인|받는\s*분|받는분|수령인|수취인)[.．:\s]+([가-힣]{2,5})/
+  );
+  if (nameMatch && isLikelyPersonName(nameMatch[1])) {
+    partial.ordererName = nameMatch[1];
+    partial.recipientName = nameMatch[1];
+  }
+  return partial;
+}
+
+function sanitizePersonFields(result: ParsedOrderSms): void {
+  if (result.address.trim()) {
+    const peeled = peelTrailingPersonName(result.address);
+    if (peeled.name) {
+      result.address = peeled.address;
+      if (!result.recipientName) result.recipientName = peeled.name;
+      if (!result.ordererName) result.ordererName = peeled.name;
+    }
+  }
+
+  for (const key of ["ordererName", "recipientName"] as const) {
+    const raw = result[key].trim();
+    if (!raw) continue;
+
+    if (looksLikePhoneValue(raw)) {
+      assignPhoneSlot(result, raw);
+      result[key] = "";
+      continue;
+    }
+
+    const cleaned = cleanParsedPersonName(raw);
+    if (cleaned) {
+      result[key] = cleaned;
+      continue;
+    }
+
+    if (/\d/.test(raw) || hasPhone(raw)) {
+      for (const phone of extractPhones(raw)) assignPhoneSlot(result, phone);
+      result[key] = "";
+    }
+  }
+
+  if (!result.recipientName && result.ordererName) {
+    result.recipientName = result.ordererName;
+  }
+  if (!result.ordererName && result.recipientName) {
+    result.ordererName = result.recipientName;
+  }
+
+  result.ordererName = cleanPersonName(result.ordererName);
+  result.recipientName = cleanPersonName(result.recipientName);
 }
 
 /** 입력 중 연락처에 하이픈 자동 삽입 */
@@ -270,6 +424,24 @@ function isLikelyPersonName(s: string): boolean {
   if (!/^[가-힣]{2,5}$/.test(s)) return false;
   if (/시$|도$|구$|군$/.test(s)) return false;
   if (REGION_SHORT_NAMES.has(s)) return false;
+  if (
+    /(?:타운|아파트|APT|단지|빌|마을|스페이스|센터|호텔|몰|샵)$/.test(s)
+  ) {
+    return false;
+  }
+  if (/[가-힣]{2,}동$/.test(s) && s.length >= 4) return false;
+  if (/[가-힣]{2,}리$/.test(s) && s.length >= 4) return false;
+  if (/[가-힣]{2,}로$/.test(s) && s.length >= 4) return false;
+  if (
+    /(?:팬|세제|세트|냄비|캡슐|롤|백|색|매트|타월|컵|솥|칼|가위|메론|과$)/.test(
+      s
+    )
+  ) {
+    return false;
+  }
+  if (["사랑", "당근", "감사", "입니다", "네", "넹", "예"].includes(s)) {
+    return false;
+  }
   for (const prefix of REGION_SHORT_NAMES) {
     if (s.startsWith(prefix) && s.length > prefix.length) return false;
   }
@@ -415,17 +587,23 @@ function parseDenseSingleLine(line: string): Partial<ParsedOrderSms> {
     if (nameBefore && isLikelyPersonName(nameBefore[1]))
       partial.recipientName = nameBefore[1];
 
-    const nameAfterMatch = after.match(
-      /\s([가-힣]{2,4})(?:\s*(?:헤어샵|샵|몰))?\s*(?:입니다)?\s*$/
-    );
-    if (nameAfterMatch && isLikelyPersonName(nameAfterMatch[1])) {
-      if (!partial.recipientName) partial.recipientName = nameAfterMatch[1];
-      after = after.slice(0, nameAfterMatch.index).trim();
+    const nameBeforeThanks = after.match(/\s([가-힣]{2,4})\s+입니다/);
+    if (nameBeforeThanks && isLikelyPersonName(nameBeforeThanks[1])) {
+      if (!partial.recipientName) partial.recipientName = nameBeforeThanks[1];
+      after = after.slice(0, nameBeforeThanks.index).trim();
     } else {
-      const nameTail = after.match(/\s([가-힣]{2,4})\s*$/);
-      if (nameTail && isLikelyPersonName(nameTail[1])) {
-        if (!partial.recipientName) partial.recipientName = nameTail[1];
-        after = after.slice(0, nameTail.index).trim();
+      const nameAfterMatch = after.match(
+        /\s([가-힣]{2,4})(?:\s*(?:헤어샵|샵|몰))?\s*(?:입니다)?\s*$/
+      );
+      if (nameAfterMatch && isLikelyPersonName(nameAfterMatch[1])) {
+        if (!partial.recipientName) partial.recipientName = nameAfterMatch[1];
+        after = after.slice(0, nameAfterMatch.index).trim();
+      } else {
+        const nameTail = after.match(/\s([가-힣]{2,4})\s*$/);
+        if (nameTail && isLikelyPersonName(nameTail[1])) {
+          if (!partial.recipientName) partial.recipientName = nameTail[1];
+          after = after.slice(0, nameTail.index).trim();
+        }
       }
     }
 
@@ -497,6 +675,13 @@ function parseOrderedLines(lines: string[]): Partial<ParsedOrderSms> {
     const pc = extractPostcode(partial.address);
     if (pc) partial.postalCode = pc;
 
+    const peeled = peelTrailingPersonName(partial.address);
+    if (peeled.name) {
+      partial.address = peeled.address;
+      if (!partial.recipientName) partial.recipientName = peeled.name;
+      if (!partial.ordererName) partial.ordererName = peeled.name;
+    }
+
     const before = remaining.slice(0, best[0]).filter(isKoreanNameLine);
     const after = remaining
       .slice(best[best.length - 1] + 1)
@@ -515,20 +700,34 @@ function parseOrderedLines(lines: string[]): Partial<ParsedOrderSms> {
     return partial;
   }
 
-  const names = remaining.filter(isKoreanNameLine);
+  const names = remaining
+    .map(normalizeNameToken)
+    .filter(
+      (n) =>
+        isKoreanNameLine(n) &&
+        isLikelyPersonName(n) &&
+        !looksLikeProductLine(n)
+    );
   if (names.length >= 1) {
     partial.ordererName = names[0];
-    partial.recipientName = names[names.length - 1];
+    partial.recipientName =
+      names.length >= 2 && names[0] !== names[names.length - 1]
+        ? names[names.length - 1]
+        : names[0];
   }
 
   return partial;
 }
 
 function applyPartial(result: ParsedOrderSms, partial: Partial<ParsedOrderSms>) {
-  if (partial.ordererName?.trim() && !result.ordererName)
-    result.ordererName = cleanPersonName(partial.ordererName.trim());
-  if (partial.recipientName?.trim() && !result.recipientName)
-    result.recipientName = cleanPersonName(partial.recipientName.trim());
+  if (partial.ordererName?.trim() && !result.ordererName) {
+    const name = cleanParsedPersonName(partial.ordererName.trim());
+    if (name) result.ordererName = name;
+  }
+  if (partial.recipientName?.trim() && !result.recipientName) {
+    const name = cleanParsedPersonName(partial.recipientName.trim());
+    if (name) result.recipientName = name;
+  }
   if (partial.contactPhone?.trim() && !result.contactPhone)
     result.contactPhone = partial.contactPhone.trim();
   if (partial.contactPhone2?.trim() && !result.contactPhone2)
@@ -559,6 +758,14 @@ export function parseOrderSms(text: string): ParsedOrderSms {
     if (isSkippableLine(line)) continue;
 
     let matched = false;
+
+    const dotPartial = parseDotSeparatedLine(line);
+    if (dotPartial) {
+      applyPartial(result, dotPartial);
+      matched = true;
+    }
+
+    if (!matched) {
     for (const { key, patterns } of LABEL_PATTERNS) {
       for (const re of patterns) {
         const m = line.match(re);
@@ -577,9 +784,11 @@ export function parseOrderSms(text: string): ParsedOrderSms {
             const pc = extractPostcode(val);
             if (pc) result.postalCode = pc;
           } else if (key === "ordererName") {
-            result.ordererName = val;
+            const name = cleanParsedPersonName(val);
+            if (name) result.ordererName = name;
           } else if (key === "recipientName") {
-            result.recipientName = val;
+            const name = cleanParsedPersonName(val);
+            if (name) result.recipientName = name;
           } else if (key === "shippingMemo") {
             result.shippingMemo = val;
           }
@@ -588,6 +797,7 @@ export function parseOrderSms(text: string): ParsedOrderSms {
         }
       }
       if (matched) break;
+    }
     }
 
     if (!matched && !isLabelLine(line)) {
@@ -600,6 +810,8 @@ export function parseOrderSms(text: string): ParsedOrderSms {
         productLine.length >= 4 &&
         !/^주문서/.test(productLine)
       ) {
+        productCandidates.push(productLine);
+      } else if (looksLikeProductLine(productLine)) {
         productCandidates.push(productLine);
       } else if (
         !looksLikeAddress(productLine) &&
@@ -620,6 +832,13 @@ export function parseOrderSms(text: string): ParsedOrderSms {
   if (!result.address) {
     const usable = lines.filter((l) => !isSkippableLine(l) && !isLabelLine(l));
     applyPartial(result, parseOrderedLines(usable));
+  } else if (result.address && !result.recipientName) {
+    const peeled = peelTrailingPersonName(result.address);
+    if (peeled.name) {
+      result.address = peeled.address;
+      result.recipientName = peeled.name;
+      if (!result.ordererName) result.ordererName = peeled.name;
+    }
   }
 
   if (!result.address || !result.recipientName) {
@@ -647,6 +866,12 @@ export function parseOrderSms(text: string): ParsedOrderSms {
       result.address = mergeAddressLines(addrLines);
       const pc = extractPostcode(result.address);
       if (pc) result.postalCode = pc;
+      const peeled = peelTrailingPersonName(result.address);
+      if (peeled.name) {
+        result.address = peeled.address;
+        if (!result.recipientName) result.recipientName = peeled.name;
+        if (!result.ordererName) result.ordererName = peeled.name;
+      }
     }
   }
 
@@ -654,19 +879,39 @@ export function parseOrderSms(text: string): ParsedOrderSms {
     const fixed = parseDenseSingleLine(result.address);
     if (fixed.address?.trim()) result.address = fixed.address.trim();
     if (fixed.recipientName?.trim()) {
-      result.recipientName = fixed.recipientName.trim();
+      const name = cleanParsedPersonName(fixed.recipientName.trim());
+      if (name) result.recipientName = name;
+      if (!result.ordererName) result.ordererName = name;
     }
     if (fixed.contactPhone?.trim()) result.contactPhone = fixed.contactPhone.trim();
     if (fixed.postalCode?.trim()) result.postalCode = fixed.postalCode.trim();
   }
 
   if (!result.recipientName || !result.ordererName) {
+    const productNorms = new Set(
+      productCandidates.map((p) => normalizeNameToken(p).replace(/[.．]+$/g, ""))
+    );
     const names = unstructured
       .map(normalizeNameToken)
-      .filter(isKoreanNameLine);
-    if (!result.ordererName && names[0]) result.ordererName = names[0];
+      .filter(
+        (n) =>
+          isKoreanNameLine(n) &&
+          isLikelyPersonName(n.replace(/[.．]+$/g, "")) &&
+          !looksLikePhoneValue(n) &&
+          !looksLikeProductLine(n) &&
+          !productNorms.has(n.replace(/[.．]+$/g, ""))
+      );
+    if (!result.ordererName && names[0]) {
+      const name = cleanParsedPersonName(names[0]);
+      if (name) result.ordererName = name;
+    }
     if (!result.recipientName) {
-      result.recipientName = names[names.length - 1] || result.ordererName;
+      if (names.length >= 2 && names[0] !== names[names.length - 1]) {
+        const name = cleanParsedPersonName(names[names.length - 1]);
+        if (name) result.recipientName = name;
+      } else {
+        result.recipientName = result.ordererName || cleanParsedPersonName(names[0] ?? "") || "";
+      }
     }
   }
 
@@ -677,22 +922,6 @@ export function parseOrderSms(text: string): ParsedOrderSms {
 
   if (!result.productName && productCandidates.length > 0) {
     result.productName = productCandidates[0];
-  }
-
-  if (!result.recipientName && result.ordererName) {
-    result.recipientName = result.ordererName;
-  }
-  if (!result.ordererName && result.recipientName) {
-    result.ordererName = result.recipientName;
-  }
-
-  result.ordererName = cleanPersonName(result.ordererName);
-  result.recipientName = cleanPersonName(result.recipientName);
-
-  const qtyInProduct = parseQuantityFromLine(result.productName);
-  if (qtyInProduct) {
-    result.quantity = qtyInProduct;
-    result.productName = stripQuantityFromProduct(result.productName);
   }
 
   if (result.address) result.address = cleanOcrAddress(result.address);
@@ -724,6 +953,20 @@ export function parseOrderSms(text: string): ParsedOrderSms {
     }
   }
 
+  const qtyInProduct = parseQuantityFromLine(result.productName);
+  if (qtyInProduct) {
+    result.quantity = qtyInProduct;
+    result.productName = stripQuantityFromProduct(result.productName);
+  }
+
+  sanitizePersonFields(result);
+
+  return result;
+}
+
+/** 주문자·수령인 필드 최종 정리 (학습 적용 후에도 호출) */
+export function finalizePersonFields(result: ParsedOrderSms): ParsedOrderSms {
+  sanitizePersonFields(result);
   return result;
 }
 

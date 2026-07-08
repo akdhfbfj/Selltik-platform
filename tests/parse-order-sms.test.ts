@@ -70,3 +70,39 @@ test("parseProductLinesFromSms: 복수 상품 라인 추출", () => {
   assert.equal(lines[1].productName, "비타민D");
   assert.equal(lines[1].quantity, 1);
 });
+
+test("parseOrderSms: 주소 끝 이름 + 별도 연락처", () => {
+  const parsed = parseOrderSms(
+    [
+      "강원특별자치도 원주시 시청로 524 단관청솔5차 502동 204호 장요한",
+      "010 2899 6150",
+      "롤팬블랙.",
+    ].join("\n")
+  );
+  assert.equal(parsed.ordererName, "장요한");
+  assert.equal(parsed.recipientName, "장요한");
+  assert.equal(parsed.contactPhone, "010-2899-6150");
+  assert.ok(parsed.address.includes("원주시"));
+  assert.ok(!parsed.address.includes("장요한"));
+  assert.ok(parsed.productName.includes("롤팬"));
+});
+
+test("parseOrderSms: 주문자.이름.연락처 점 구분", () => {
+  const parsed = parseOrderSms(
+    [
+      "전남목포시   원산중앙로   108 .205동1103호(연산동 주공2단지APT)",
+      "주문자.김성자.010 5664 4040.",
+    ].join("\n")
+  );
+  assert.equal(parsed.ordererName, "김성자");
+  assert.equal(parsed.recipientName, "김성자");
+  assert.equal(parsed.contactPhone, "010-5664-4040");
+  assert.ok(parsed.address.includes("목포시"));
+});
+
+test("parseOrderSms: 이름 칸에 전화번호 금지", () => {
+  const parsed = parseOrderSms("홍길동\n010-1234-5678\n롤팬");
+  assert.equal(parsed.ordererName, "홍길동");
+  assert.equal(parsed.recipientName, "홍길동");
+  assert.equal(parsed.contactPhone, "010-1234-5678");
+});

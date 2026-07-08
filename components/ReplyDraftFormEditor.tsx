@@ -199,7 +199,7 @@ export default function ReplyDraftFormEditor({
                 value={line.productId ?? ""}
                 onChange={(productId) => handleProductSelect(line.id, productId)}
                 placeholder="SKU·공급가표 상품명 검색"
-                seedQuery=""
+                seedQuery={rawProductNames[idx] ?? ""}
                 onFocus={closeAddressPicker}
               />
               {line.productMatch.matchedBy === "none" && (

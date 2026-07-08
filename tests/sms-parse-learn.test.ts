@@ -7,6 +7,7 @@ import {
   applySmsLearnings,
   extractLearnedLabelPatterns,
   extractProductHints,
+  type LearnedLabelPattern,
 } from "../lib/sms-parse-learn";
 import type { SmsParseSampleRow } from "../lib/sms-parse-samples";
 
@@ -205,4 +206,79 @@ test("applySmsLearnings: 전역+셀러 분리 적용", () => {
 
   assert.equal(result.recipientName, "신규고객");
   assert.equal(result.productName, "망고 프리미엄");
+});
+
+test("applyLearnedLabelPatterns: 주문자 라벨에 전화번호 포함돼도 이름만 추출", () => {
+  const patterns = extractLearnedLabelPatterns([
+    {
+      shop_id: "shop-a",
+      raw_sms_text: "주문자.김성자.010 5664 4040.",
+      auto_parsed: emptyParsed(),
+      seller_final: {
+        productName: "",
+        quantity: 1,
+        ordererName: "김성자",
+        recipientName: "김성자",
+        contactPhone: "010-5664-4040",
+        contactPhone2: "",
+        postalCode: "",
+        address: "",
+        shippingMemo: "",
+      },
+      corrected_fields: ["ordererName"],
+    },
+    {
+      shop_id: "shop-b",
+      raw_sms_text: "주문자.박민수.010 1111 2222",
+      auto_parsed: emptyParsed(),
+      seller_final: {
+        productName: "",
+        quantity: 1,
+        ordererName: "박민수",
+        recipientName: "박민수",
+        contactPhone: "010-1111-2222",
+        contactPhone2: "",
+        postalCode: "",
+        address: "",
+        shippingMemo: "",
+      },
+      corrected_fields: ["ordererName"],
+    },
+  ]);
+
+  const parsed = {
+    ...emptyParsed(),
+    ordererName: "김성자",
+    recipientName: "김성자",
+    contactPhone: "010-5664-4040",
+  };
+  const raw = "주문자.김성자.010 5664 4040.";
+  const result = applyLearnedLabelPatterns(parsed, raw, patterns);
+
+  assert.equal(result.ordererName, "김성자");
+  assert.equal(result.recipientName, "김성자");
+});
+
+test("applyLearnedLabelPatterns: 전화번호 조각을 주문자로 덮어쓰지 않음", () => {
+  const patterns: LearnedLabelPattern[] = [
+    {
+      field: "ordererName",
+      regex: /^주문자\.\s*[:：.]?\s*(.+)$/i,
+      hits: 3,
+    },
+  ];
+  const parsed = {
+    ...emptyParsed(),
+    ordererName: "김성자",
+    recipientName: "김성자",
+    contactPhone: "010-2899-6150",
+  };
+  const result = applyLearnedLabelPatterns(
+    parsed,
+    "10 2899 6150",
+    patterns
+  );
+
+  assert.equal(result.ordererName, "김성자");
+  assert.equal(result.recipientName, "김성자");
 });

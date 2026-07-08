@@ -2,8 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatKrw } from "@/lib/parse-supply-csv";
+import {
+  productMatchesHintFilter,
+  rankProductsByHint,
+  scoreProductRelevance,
+} from "@/lib/product-search-score";
 import type { SellerProductView } from "@/lib/types";
-import { Clock, Search, Star } from "lucide-react";
+import { Clock, Search, Sparkles, Star } from "lucide-react";
 
 interface Props {
   products: SellerProductView[];
@@ -47,6 +52,7 @@ export default function ProductSearchInput({
   const listRef = useRef<HTMLUListElement>(null);
 
   const selected = products.find((p) => p.id === value);
+  const hint = seedQuery.trim();
 
   useEffect(() => {
     setQuery("");
@@ -61,21 +67,36 @@ export default function ProductSearchInput({
         : selected.officialName;
       setQuery(label);
     } else if (!value) {
-      setQuery(seedQuery.trim());
+      setQuery(hint);
     }
-  }, [selected, value, seedQuery]);
+  }, [selected, value, hint]);
 
-  const { favoriteItems, recentItems, otherItems, showSections } = useMemo(() => {
-    const q = query.trim().toLowerCase();
+  const {
+    parsedItems,
+    favoriteItems,
+    recentItems,
+    otherItems,
+    showSections,
+    flatItems,
+  } = useMemo(() => {
+    const q = query.trim();
+    const qLower = q.toLowerCase();
+
     const matched = q
       ? products.filter(
           (p) =>
-            p.officialName.toLowerCase().includes(q) ||
-            p.smsName.toLowerCase().includes(q)
+            productMatchesHintFilter(p, q) ||
+            p.officialName.toLowerCase().includes(qLower) ||
+            p.smsName.toLowerCase().includes(qLower)
         )
       : products;
 
-    const sorted = sortForPicker(matched);
+    const ranked = q ? rankProductsByHint(matched, q) : [];
+    const parsedIds = new Set(ranked.slice(0, 8).map((p) => p.id));
+    const parsedItems = ranked.slice(0, 8);
+
+    const rest = matched.filter((p) => !parsedIds.has(p.id));
+    const sorted = sortForPicker(rest);
     const favorites = sorted.filter((p) => p.isFavorite);
     const recent = sorted.filter((p) => !p.isFavorite && p.lastOutboundAt);
     const others = sorted.filter((p) => !p.isFavorite && !p.lastOutboundAt);
@@ -84,25 +105,40 @@ export default function ProductSearchInput({
     const limitedRecent = recent.slice(0, 10);
     const limitOthers = Math.max(
       0,
-      30 - limitedFavorites.length - limitedRecent.length
+      30 - parsedItems.length - limitedFavorites.length - limitedRecent.length
     );
-    const limitedOthers = [
-      ...recent.slice(10),
-      ...others,
-    ].slice(0, limitOthers);
+    const limitedOthers = [...recent.slice(10), ...others].slice(0, limitOthers);
+
+    const showParsedSection =
+      !selected && parsedItems.length > 0 && (hint.length > 0 || q.length > 0);
+
+    const showDefaultSections =
+      !q && !showParsedSection && (favorites.length > 0 || recent.length > 0);
+
+    const flatItems = showParsedSection
+      ? [
+          ...parsedItems,
+          ...limitedFavorites,
+          ...limitedRecent,
+          ...limitedOthers,
+        ]
+      : showDefaultSections
+        ? [...limitedFavorites, ...limitedRecent, ...limitedOthers]
+        : q
+          ? [...parsedItems, ...sortForPicker(matched)].filter(
+              (p, i, arr) => arr.findIndex((x) => x.id === p.id) === i
+            )
+          : sortForPicker(matched);
 
     return {
-      favoriteItems: limitedFavorites,
-      recentItems: limitedRecent,
-      otherItems: limitedOthers,
-      showSections: !q && (favorites.length > 0 || recent.length > 0),
+      parsedItems: showParsedSection ? parsedItems : [],
+      favoriteItems: showDefaultSections ? limitedFavorites : [],
+      recentItems: showDefaultSections ? limitedRecent : [],
+      otherItems: showDefaultSections ? limitedOthers : [],
+      showSections: showParsedSection || showDefaultSections,
+      flatItems,
     };
-  }, [products, query]);
-
-  const flatItems = useMemo(
-    () => [...favoriteItems, ...recentItems, ...otherItems],
-    [favoriteItems, recentItems, otherItems]
-  );
+  }, [products, query, hint, selected]);
 
   const hasResults = flatItems.length > 0;
 
@@ -162,8 +198,12 @@ export default function ProductSearchInput({
 
   const renderItem = (p: SellerProductView, index: number) => {
     const active = index === activeIndex;
+    const parsedScore =
+      hint || query.trim()
+        ? scoreProductRelevance(query.trim() || hint, p)
+        : 0;
     return (
-      <li key={p.id} data-picker-index={index}>
+      <li key={`${p.id}-${index}`} data-picker-index={index}>
         <button
           type="button"
           className={`flex w-full items-start gap-2 px-3 py-2.5 text-left ${
@@ -172,7 +212,9 @@ export default function ProductSearchInput({
           onMouseEnter={() => setActiveIndex(index)}
           onClick={() => selectProduct(p)}
         >
-          {p.isFavorite ? (
+          {parsedScore >= 12 ? (
+            <Sparkles className="mt-1 h-3.5 w-3.5 shrink-0 text-emerald-500" />
+          ) : p.isFavorite ? (
             <Star className="mt-1 h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" />
           ) : p.lastOutboundAt ? (
             <Clock className="mt-1 h-3.5 w-3.5 shrink-0 text-blue-400" />
@@ -233,9 +275,23 @@ export default function ProductSearchInput({
         >
           {showSections ? (
             <>
+              {parsedItems.length > 0 && (
+                <>
+                  <li className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                    분석 추천
+                  </li>
+                  {parsedItems.map((p) => renderItem(p, itemIndex++))}
+                </>
+              )}
               {favoriteItems.length > 0 && (
                 <>
-                  <li className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                  <li
+                    className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ${
+                      parsedItems.length > 0
+                        ? "mt-1 border-t border-slate-100"
+                        : ""
+                    }`}
+                  >
                     인기 상품
                   </li>
                   {favoriteItems.map((p) => renderItem(p, itemIndex++))}
@@ -245,7 +301,7 @@ export default function ProductSearchInput({
                 <>
                   <li
                     className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600 ${
-                      favoriteItems.length > 0
+                      parsedItems.length > 0 || favoriteItems.length > 0
                         ? "mt-1 border-t border-slate-100"
                         : ""
                     }`}

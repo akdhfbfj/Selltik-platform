@@ -40,6 +40,9 @@ export function findProductBySkuInText(
   text: string,
   products: SellerProductView[]
 ): SellerProductView | null {
+  const unique = findUniqueProductBySkuInText(text, products);
+  if (unique) return unique;
+
   const lower = text.toLowerCase();
   const sorted = [...products]
     .filter((p) => p.smsName.trim().length >= 2)
@@ -49,6 +52,20 @@ export function findProductBySkuInText(
     const sku = p.smsName.trim();
     if (sku && lower.includes(sku.toLowerCase())) return p;
   }
+  return null;
+}
+
+/** 원문에 SKU가 1건만 포함될 때만 자동 매칭 */
+export function findUniqueProductBySkuInText(
+  text: string,
+  products: SellerProductView[]
+): SellerProductView | null {
+  const lower = text.toLowerCase();
+  const hits = products.filter((p) => {
+    const sku = p.smsName.trim();
+    return sku.length >= 2 && lower.includes(sku.toLowerCase());
+  });
+  if (hits.length === 1) return hits[0];
   return null;
 }
 
@@ -63,9 +80,7 @@ export function matchProductBySmsName(
   const query = normalizeName(cleaned);
   if (!query) return { product: null, matchedBy: "none" };
 
-  const skuHit =
-    matchProductBySku(cleaned, products) ??
-    findProductBySkuInText(cleaned, products);
+  const skuHit = matchProductBySku(cleaned, products);
   if (skuHit) return { product: skuHit, matchedBy: "sms_alias" };
 
   const aliasHit = products.find(
@@ -73,23 +88,8 @@ export function matchProductBySmsName(
   );
   if (aliasHit) return { product: aliasHit, matchedBy: "sms_alias" };
 
-  const officialHit = products.find(
-    (p) => normalizeName(p.officialName) === query
-  );
-  if (officialHit) return { product: officialHit, matchedBy: "official_name" };
-
-  const aliasContains = products.find((p) => {
-    const alias = normalizeName(p.smsName);
-    return alias.length >= 4 && query.includes(alias);
-  });
-  if (aliasContains) return { product: aliasContains, matchedBy: "sms_alias" };
-
-  const officialContains = products.find((p) => {
-    const official = normalizeName(p.officialName);
-    return official.length >= 4 && query.includes(official);
-  });
-  if (officialContains)
-    return { product: officialContains, matchedBy: "official_name" };
+  const uniqueInText = findUniqueProductBySkuInText(cleaned, products);
+  if (uniqueInText) return { product: uniqueInText, matchedBy: "sms_alias" };
 
   return { product: null, matchedBy: "none" };
 }
