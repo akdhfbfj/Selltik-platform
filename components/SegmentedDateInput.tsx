@@ -58,24 +58,70 @@ export default function SegmentedDateInput({
     if (onComplete) onComplete(iso);
   };
 
-  const handleYear = (raw: string) => {
-    const digits = raw.replace(/\D/g, "").slice(0, 4);
-    setYear(digits);
-    if (digits.length === 4) {
+  const applyDigitStream = (digits: string, startField: "year" | "month" = "year") => {
+    const clean = digits.replace(/\D/g, "").slice(0, 8);
+    if (!clean) return;
+
+    let y = year;
+    let m = month;
+    let d = day;
+
+    if (startField === "year") {
+      y = clean.slice(0, 4);
+      m = clean.slice(4, 6);
+      d = clean.slice(6, 8);
+    } else {
+      m = clean.slice(0, 2);
+      d = clean.slice(2, 4);
+    }
+
+    setYear(y);
+    setMonth(m);
+    setDay(d);
+
+    if (y.length === 4 && m.length === 2 && d.length === 2) {
+      emit(y, m, d);
+      return;
+    }
+    if (y.length === 4 && m.length === 2) {
+      dayRef.current?.focus();
+      dayRef.current?.select();
+      return;
+    }
+    if (y.length === 4) {
       monthRef.current?.focus();
       monthRef.current?.select();
     }
-    emit(digits, month, day);
+  };
+
+  const handleYear = (raw: string) => {
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length > 4) {
+      applyDigitStream(digits, "year");
+      return;
+    }
+    const next = digits.slice(0, 4);
+    setYear(next);
+    if (next.length === 4) {
+      monthRef.current?.focus();
+      monthRef.current?.select();
+    }
+    emit(next, month, day);
   };
 
   const handleMonth = (raw: string) => {
-    const digits = raw.replace(/\D/g, "").slice(0, 2);
-    setMonth(digits);
-    if (digits.length === 2) {
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length > 2) {
+      applyDigitStream(digits, "month");
+      return;
+    }
+    const next = digits.slice(0, 2);
+    setMonth(next);
+    if (next.length === 2) {
       dayRef.current?.focus();
       dayRef.current?.select();
     }
-    emit(year, digits, day);
+    emit(year, next, day);
   };
 
   const handleDay = (raw: string) => {
@@ -93,9 +139,13 @@ export default function SegmentedDateInput({
         type="text"
         inputMode="numeric"
         placeholder="2026"
-        maxLength={4}
+        maxLength={8}
         value={year}
         onChange={(e) => handleYear(e.target.value)}
+        onPaste={(e) => {
+          e.preventDefault();
+          applyDigitStream(e.clipboardData.getData("text"), "year");
+        }}
         className={`${inputClass} min-w-[4.5rem]`}
         aria-label="연도"
       />

@@ -30,6 +30,9 @@ create table if not exists master_products (
   profit_rate text not null default '',
   sort_order integer not null default 0,
   is_sold_out boolean not null default false,
+  celtic_purchase_price integer not null default 0,
+  celtic_base_shipping integer not null default 0,
+  celtic_supply_total integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -250,5 +253,34 @@ create table if not exists seller_daily_goals (
 
 create index if not exists idx_seller_daily_goals_shop_date
   on seller_daily_goals(shop_id, date_key desc);
+
+create table if not exists imported_order_batches (
+  id text primary key,
+  shop_id text references shops(id) on delete set null,
+  seller_name text not null default '',
+  order_date date not null,
+  batch_title text not null default '',
+  line_count integer not null default 0,
+  unmatched_lines integer not null default 0,
+  celtic_deposit_total integer not null default 0,
+  deposit_amount integer,
+  seller_sales_total integer not null default 0,
+  seller_margin_total integer not null default 0,
+  celtic_cost_total integer not null default 0,
+  celtic_margin_total integer not null default 0,
+  import_key text not null unique,
+  source_file_name text not null default '',
+  is_confirmed boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_imported_batches_date
+  on imported_order_batches (order_date desc);
+
+create index if not exists idx_imported_batches_shop_date
+  on imported_order_batches (shop_id, order_date desc);
+
+create index if not exists idx_imported_batches_confirmed_date
+  on imported_order_batches (is_confirmed, order_date desc);
 
 -- Storage: Dashboard > Storage > New bucket > name: uploads > Public bucket

@@ -41,8 +41,6 @@ export async function POST(request: Request) {
       purchasePrice: body.purchasePrice ?? 0,
       baseShipping: body.baseShipping ?? 0,
       consumerPrice: body.consumerPrice,
-      profitAmount: body.profitAmount,
-      profitRate: body.profitRate,
       isSoldOut: body.isSoldOut ?? false,
     });
     return NextResponse.json(product, { status: 201 });

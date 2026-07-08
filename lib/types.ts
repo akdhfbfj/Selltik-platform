@@ -224,6 +224,9 @@ export interface MasterProduct {
   profitRate: string;
   sortOrder: number;
   isSoldOut: boolean;
+  celticPurchasePrice: number;
+  celticBaseShipping: number;
+  celticSupplyTotal: number;
   updatedAt: string;
 }
 
@@ -462,4 +465,24 @@ export interface SellerOrderDailyMetric {
   margin: number;
   cumulativeSales: number;
   cumulativeMargin: number;
+}
+
+export interface ImportedOrderBatch {
+  id: string;
+  shopId: string | null;
+  sellerName: string;
+  orderDate: string;
+  batchTitle: string;
+  lineCount: number;
+  unmatchedLines: number;
+  celticDepositTotal: number;
+  depositAmount: number | null;
+  sellerSalesTotal: number;
+  sellerMarginTotal: number;
+  celticCostTotal: number;
+  celticMarginTotal: number;
+  importKey: string;
+  sourceFileName: string;
+  isConfirmed: boolean;
+  createdAt: string;
 }

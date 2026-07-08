@@ -6,6 +6,7 @@ import {
   REVIEW_REASON_LABELS,
 } from "@/lib/product-review-ui";
 import { formatKrw } from "@/lib/parse-supply-csv";
+import { computeProductProfit } from "@/lib/product-profit";
 import { extractProductComposition, parseProfitRate } from "@/lib/seller-ui";
 import type { SellerProductView } from "@/lib/types";
 import {
@@ -260,14 +261,20 @@ export default function SellerProductsClient({
 
     const mul = priceSort.dir === "asc" ? 1 : -1;
     list.sort((a, b) => {
+      const aProfit = computeProductProfit(a.consumerPrice, a.supplyTotal);
+      const bProfit = computeProductProfit(b.consumerPrice, b.supplyTotal);
       const av =
         priceSort.key === "profitRate"
-          ? parseProfitRate(a.profitRate)
-          : a[priceSort.key];
+          ? parseProfitRate(aProfit.profitRate)
+          : priceSort.key === "profitAmount"
+            ? aProfit.profitAmount
+            : a[priceSort.key];
       const bv =
         priceSort.key === "profitRate"
-          ? parseProfitRate(b.profitRate)
-          : b[priceSort.key];
+          ? parseProfitRate(bProfit.profitRate)
+          : priceSort.key === "profitAmount"
+            ? bProfit.profitAmount
+            : b[priceSort.key];
       const diff = (av - bv) * mul;
       return diff !== 0 ? diff : a.sortOrder - b.sortOrder;
     });
@@ -554,6 +561,10 @@ export default function SellerProductsClient({
                 {displayed.map((p) => {
                   const changes = p.needsReview ? describeProductChanges(p) : [];
                   const composition = extractProductComposition(p.description);
+                  const { profitAmount, profitRate } = computeProductProfit(
+                    p.consumerPrice,
+                    p.supplyTotal
+                  );
                   const review = p.needsReview;
                   const soldOut = p.isSoldOut;
                   const soldOutCell = soldOut
@@ -696,7 +707,7 @@ export default function SellerProductsClient({
                             : "bg-blue-50/60 text-blue-800"
                         }`}
                       >
-                        {formatKrw(p.profitAmount)}
+                        {formatKrw(profitAmount)}
                       </td>
                       <td
                         className={`whitespace-nowrap align-middle border border-l-0 border-slate-300 px-2 py-1.5 text-right text-[11px] tabular-nums last:rounded-r-lg ${
@@ -705,7 +716,7 @@ export default function SellerProductsClient({
                             : "bg-violet-50/60 text-violet-800"
                         }`}
                       >
-                        {p.profitRate || "—"}
+                        {profitRate || "—"}
                       </td>
                     </tr>
                   );

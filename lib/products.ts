@@ -7,6 +7,8 @@ import type {
   SellerProductView,
 } from "./types";
 import type { ParsedSupplyProduct } from "./parse-supply-csv";
+import type { ParsedCelticPriceProduct } from "./parse-celtic-price-csv";
+import { computeProductProfit } from "./product-profit";
 import { getAllShops } from "./shops";
 import { createServerClient } from "./supabase/server";
 import { cache } from "react";
@@ -26,14 +28,19 @@ function rowToProduct(row: DbRow): MasterProduct {
     profitRate: row.profit_rate as string,
     sortOrder: row.sort_order as number,
     isSoldOut: (row.is_sold_out as boolean | undefined) ?? false,
+    celticPurchasePrice: (row.celtic_purchase_price as number | undefined) ?? 0,
+    celticBaseShipping: (row.celtic_base_shipping as number | undefined) ?? 0,
+    celticSupplyTotal: (row.celtic_supply_total as number | undefined) ?? 0,
     updatedAt: row.updated_at as string,
   };
 }
 
 function toDbRow(input: MasterProductInput, sortOrder: number, now: string) {
   const supplyTotal = input.purchasePrice + input.baseShipping;
-  const profitAmount =
-    input.profitAmount ?? Math.max(0, input.consumerPrice - supplyTotal);
+  const { profitAmount, profitRate } = computeProductProfit(
+    input.consumerPrice,
+    supplyTotal
+  );
   return {
     official_name: input.officialName.trim(),
     description: input.description?.trim() ?? "",
@@ -42,7 +49,7 @@ function toDbRow(input: MasterProductInput, sortOrder: number, now: string) {
     supply_total: supplyTotal,
     consumer_price: input.consumerPrice,
     profit_amount: profitAmount,
-    profit_rate: input.profitRate?.trim() ?? "",
+    profit_rate: profitRate,
     sort_order: sortOrder,
     is_sold_out: input.isSoldOut ?? false,
     updated_at: now,
@@ -62,6 +69,15 @@ export function formatDbError(error: { message?: string; code?: string }): strin
   }
   if (msg.includes("seller_outbound_usage") && msg.includes("does not exist")) {
     return "DB 테이블이 없습니다. Supabase SQL Editor에서 013_seller_outbound_usage.sql을 실행하세요.";
+  }
+  if (msg.includes("imported_order_batches") && msg.includes("does not exist")) {
+    return "DB 테이블이 없습니다. Supabase SQL Editor에서 018_order_history_import.sql을 실행하세요.";
+  }
+  if (msg.includes("is_confirmed") && msg.includes("does not exist")) {
+    return "DB 컬럼이 없습니다. Supabase SQL Editor에서 019_imported_batch_confirmed.sql을 실행하세요.";
+  }
+  if (msg.includes("celtic_purchase_price") && msg.includes("does not exist")) {
+    return "DB 컬럼이 없습니다. Supabase SQL Editor에서 018_order_history_import.sql을 실행하세요.";
   }
   if (error.code === "23505") {
     return "이미 같은 상품명이 있습니다.";
@@ -134,8 +150,10 @@ function masterInputDiffers(
   input: MasterProductInput
 ): boolean {
   const supplyTotal = input.purchasePrice + input.baseShipping;
-  const profitAmount =
-    input.profitAmount ?? Math.max(0, input.consumerPrice - supplyTotal);
+  const { profitAmount, profitRate } = computeProductProfit(
+    input.consumerPrice,
+    supplyTotal
+  );
   return (
     existing.officialName !== input.officialName.trim() ||
     existing.description !== (input.description?.trim() ?? "") ||
@@ -144,7 +162,7 @@ function masterInputDiffers(
     existing.supplyTotal !== supplyTotal ||
     existing.consumerPrice !== input.consumerPrice ||
     existing.profitAmount !== profitAmount ||
-    existing.profitRate !== (input.profitRate?.trim() ?? "") ||
+    existing.profitRate !== profitRate ||
     (input.isSoldOut !== undefined && existing.isSoldOut !== input.isSoldOut)
   );
 }
@@ -457,6 +475,107 @@ export async function importSupplyProducts(
       profit_rate: item.profitRate,
       sort_order: item.sortOrder,
       is_sold_out: existing?.isSoldOut ?? false,
+      updated_at: now,
+      created_at: meta?.created_at ?? now,
+    };
+  });
+
+  const CHUNK = 50;
+  for (let i = 0; i < upsertRows.length; i += CHUNK) {
+    const chunk = upsertRows.slice(i, i + CHUNK);
+    const { error } = await supabase
+      .from("master_products")
+      .upsert(chunk, { onConflict: "official_name" });
+    if (error) throw error;
+  }
+
+  await flagProductsForSellerReview(reviewFlags);
+
+  return {
+    imported: uniqueItems.length,
+    parsed,
+    duplicates,
+    changed: reviewFlags.length,
+  };
+}
+
+export async function importCelticPriceProducts(
+  items: ParsedCelticPriceProduct[]
+): Promise<{
+  imported: number;
+  parsed: number;
+  duplicates: number;
+  changed: number;
+}> {
+  const parsed = items.length;
+  const map = new Map<string, ParsedCelticPriceProduct>();
+  for (const item of items) {
+    map.set(item.officialName, item);
+  }
+  const uniqueItems = [...map.values()];
+  const duplicates = parsed - uniqueItems.length;
+
+  const supabase = createServerClient();
+  const now = new Date().toISOString();
+
+  const existingProducts = await getAllMasterProducts();
+  const nameToProduct = new Map(
+    existingProducts.map((p) => [p.officialName, p])
+  );
+
+  const existingMeta = await fetchAllRows<{
+    id: string;
+    official_name: string;
+    created_at: string;
+  }>((from, to) =>
+    supabase
+      .from("master_products")
+      .select("id, official_name, created_at")
+      .range(from, to)
+      .then((r) => r)
+  );
+  const nameToMeta = new Map(existingMeta.map((r) => [r.official_name, r]));
+
+  const reviewFlags: ProductReviewFlag[] = [];
+  const upsertRows = uniqueItems.map((item) => {
+    const meta = nameToMeta.get(item.officialName);
+    const existing = nameToProduct.get(item.officialName);
+    const id = meta?.id ?? uuidv4();
+    const supplyItem = {
+      officialName: item.officialName,
+      description: existing?.description ?? "",
+      purchasePrice: item.purchasePrice,
+      baseShipping: item.baseShipping,
+      supplyTotal: item.supplyTotal,
+      consumerPrice: item.consumerPrice,
+      profitAmount: item.profitAmount,
+      profitRate: item.profitRate,
+      sortOrder: item.sortOrder,
+    };
+    if (!existing || parsedItemDiffers(existing, supplyItem)) {
+      reviewFlags.push({
+        productId: id,
+        reason: classifyProductReviewReason(existing, supplyItem),
+        changeDetail: existing
+          ? buildChangeDetailFromProduct(existing)
+          : undefined,
+      });
+    }
+    return {
+      id,
+      official_name: item.officialName,
+      description: existing?.description ?? "",
+      purchase_price: item.purchasePrice,
+      base_shipping: item.baseShipping,
+      supply_total: item.supplyTotal,
+      consumer_price: item.consumerPrice,
+      profit_amount: item.profitAmount,
+      profit_rate: item.profitRate,
+      sort_order: item.sortOrder,
+      is_sold_out: existing?.isSoldOut ?? false,
+      celtic_purchase_price: item.celticPurchasePrice,
+      celtic_base_shipping: item.celticBaseShipping,
+      celtic_supply_total: item.celticSupplyTotal,
       updated_at: now,
       created_at: meta?.created_at ?? now,
     };

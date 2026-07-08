@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BarChart3,
   Building2,
   ClipboardList,
   Home,
@@ -25,6 +26,7 @@ export default function AdminNav() {
     { href: "/admin", label: "홈", icon: Home },
     { href: "/admin/products", label: "공급가", icon: Package },
     { href: "/admin/orders", label: "발주 현황", icon: ClipboardList },
+    { href: "/admin/finance", label: "자금 흐름", icon: BarChart3 },
     { href: "/inbox", label: "셀러 추천함", icon: Inbox },
     { href: "/", label: "업체 컨택", icon: Building2 },
     { href: "/admin/shops", label: "셀러 계정", icon: Users },

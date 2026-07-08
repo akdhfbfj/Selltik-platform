@@ -86,8 +86,6 @@ export default function AdminProductsPage() {
       purchasePrice: p.purchasePrice,
       baseShipping: p.baseShipping,
       consumerPrice: p.consumerPrice,
-      profitAmount: p.profitAmount,
-      profitRate: p.profitRate,
       isSoldOut: p.isSoldOut,
     });
     setShowForm(true);
