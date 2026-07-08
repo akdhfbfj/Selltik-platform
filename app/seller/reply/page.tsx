@@ -51,6 +51,10 @@ export default function SellerReplyPage() {
   const parseTextRef = useRef("");
   const [error, setError] = useState("");
   const [savingToOrders, setSavingToOrders] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [success, setSuccess] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -326,16 +330,21 @@ export default function SellerReplyPage() {
     }
 
     setSavingToOrders(true);
+    setSaveProgress(null);
     setError("");
     setSuccess("");
 
     const result = await saveOrderDraftBundles(
-      selected.map((q) => ({ id: q.id, bundle: q.bundle, label: q.label }))
+      selected.map((q) => ({ id: q.id, bundle: q.bundle, label: q.label })),
+      {
+        onProgress: (current, total) => setSaveProgress({ current, total }),
+      }
     );
 
     if (!result.ok) {
       setError(result.error);
       setSavingToOrders(false);
+      setSaveProgress(null);
       return;
     }
 
@@ -344,6 +353,7 @@ export default function SellerReplyPage() {
     setQueue(remaining);
     saveReplyDraftQueue(remaining);
     setSavingToOrders(false);
+    setSaveProgress(null);
 
     if (result.failedLines > 0) {
       const detail =
@@ -630,7 +640,12 @@ export default function SellerReplyPage() {
               className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
             >
               {savingToOrders ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {saveProgress
+                    ? `저장 중 (${saveProgress.current}/${saveProgress.total})`
+                    : "저장 중…"}
+                </>
               ) : (
                 <>
                   임시 발주서에 저장 ({selectedQueueCount}건)

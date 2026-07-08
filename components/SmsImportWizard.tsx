@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { bundleLineToOrderPayload } from "@/lib/order-draft-helpers";
-import { formatBulkSaveMessage } from "@/lib/save-order-bundles";
+import { saveOrderPayloadsInChunks } from "@/lib/save-order-bundles";
 import {
   SMS_IMPORT_STEPS,
   type SmsImportStepId,
@@ -254,22 +254,15 @@ export default function SmsImportWizard() {
     setSaving(true);
     setSaveMessage("");
 
-    const res = await fetch("/api/seller/orders/bulk-create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orders: payloadsToSave }),
-    });
-    const data = await res.json();
+    const result = await saveOrderPayloadsInChunks(payloadsToSave);
     setSaving(false);
 
-    if (!res.ok && !data.created) {
-      setSaveMessage(data.error || "저장에 실패했습니다.");
+    if (result.created === 0 && result.failed > 0) {
+      setSaveMessage(result.message || "저장에 실패했습니다.");
       return;
     }
 
-    const created = data.created as number;
-    const errCount = (data.errors as unknown[])?.length ?? 0;
-    setSaveMessage(formatBulkSaveMessage(created, errCount));
+    setSaveMessage(result.message);
   };
 
   return (
