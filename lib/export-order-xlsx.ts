@@ -14,7 +14,12 @@ const COLS = 14;
 const TOTAL_COL = 12; // M열 계
 const CELTIC_COL = 13; // N열 셀틱 입금액
 const DATA_START_ROW = 3; // 엑셀 4행
+/** 30건 미만일 때 빈 행 패딩 — 상한이 아님 */
 const MIN_DATA_ROWS = 30;
+
+function sheetDataRowCount(orderCount: number): number {
+  return Math.max(orderCount, MIN_DATA_ROWS);
+}
 
 const HEADER_FILL = "E0E0E0";
 const CELTIC_HEADER_FILL = "FFF9C4";
@@ -176,7 +181,7 @@ export function buildOrderSheetRows(
     rows[3][CELTIC_COL] = sumCelticDeposit(orders);
   }
 
-  const padCount = Math.max(0, MIN_DATA_ROWS - orders.length);
+  const padCount = Math.max(0, sheetDataRowCount(orders.length) - orders.length);
   for (let i = 0; i < padCount; i++) {
     rows.push(emptyRowValues());
   }
@@ -193,6 +198,7 @@ export function buildOrderWorkbook(
   const { groupCounts, groupStyleIndex } = buildGroupMeta(orders);
   const ws: XLSX.WorkSheet = {};
   const celticTotal = sumCelticDeposit(orders);
+  const dataRowCount = sheetDataRowCount(orders.length);
 
   ws[cellRef(0, 0)] = styledCell("발주서", { bold: true, align: "center" });
   ws[cellRef(1, 0)] = styledCell(shopName, { bold: true });
@@ -235,7 +241,7 @@ export function buildOrderWorkbook(
     });
   }
 
-  for (let i = orders.length; i < MIN_DATA_ROWS; i++) {
+  for (let i = orders.length; i < dataRowCount; i++) {
     emptyRowValues().forEach((val, c) => {
       if (c === CELTIC_COL) return;
       ws[cellRef(DATA_START_ROW + i, c)] = styledCell(val, {
@@ -269,7 +275,7 @@ export function buildOrderWorkbook(
   ];
   ws["!ref"] = XLSX.utils.encode_range({
     s: { r: 0, c: 0 },
-    e: { r: DATA_START_ROW + MIN_DATA_ROWS - 1, c: CELTIC_COL },
+    e: { r: DATA_START_ROW + dataRowCount - 1, c: CELTIC_COL },
   });
 
   const wb = XLSX.utils.book_new();

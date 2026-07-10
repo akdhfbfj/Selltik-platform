@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import XLSX from "xlsx-js-style";
 import {
   buildOrderSheetRows,
+  buildOrderWorkbook,
   formatExportFileSuffix,
   formatOrderDateShort,
   orderExportFilename,
@@ -129,6 +131,42 @@ describe("export-order-xlsx", () => {
       ]),
       150000
     );
+  });
+
+  it("includes all order rows when count exceeds 30", () => {
+    const orders = Array.from({ length: 31 }, (_, i) =>
+      sampleOrder({
+        id: String(i),
+        productName: `상품${i + 1}`,
+        supplyTotal: 1000,
+        recipientName: i === 30 ? "박지민" : "홍길동",
+      })
+    );
+    const wb = buildOrderWorkbook("부자소리", orders, exportDate);
+    const ws = wb.Sheets["발주서"];
+    const range = XLSX.utils.decode_range(ws["!ref"] as string);
+    assert.equal(range.e.r, 3 + 31 - 1);
+
+    let filled = 0;
+    let mSum = 0;
+    let lastRecipient = "";
+    for (let r = 3; r <= range.e.r; r++) {
+      const product = ws[XLSX.utils.encode_cell({ r, c: 1 })]?.v;
+      if (product && String(product).trim()) {
+        filled++;
+        lastRecipient = String(
+          ws[XLSX.utils.encode_cell({ r, c: 4 })]?.v ?? lastRecipient
+        );
+        const m = ws[XLSX.utils.encode_cell({ r, c: 12 })]?.v;
+        if (typeof m === "number") mSum += m;
+      }
+    }
+
+    const n4 = ws[XLSX.utils.encode_cell({ r: 3, c: 13 })]?.v;
+    assert.equal(filled, 31);
+    assert.equal(lastRecipient, "박지민");
+    assert.equal(n4, 31000);
+    assert.equal(mSum, n4);
   });
 
 });
