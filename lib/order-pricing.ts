@@ -41,8 +41,9 @@ export function calcOrderPricing(
     { isRemoteArea: remoteChecked, remoteLineCount: 1 }
   );
   const shippingFee = unitBaseShipping * qty + remoteSurcharge;
+  // 제주·도서산간 +4천: 고객에게 받고 셀틱에도 동일 금액 전달(통과) → 마진 불변
   const celticDepositAmount = unitSupply * qty + remoteSurcharge;
-  const customerDepositAmount = unitConsumer * qty;
+  const customerDepositAmount = unitConsumer * qty + remoteSurcharge;
 
   return {
     purchasePrice,
