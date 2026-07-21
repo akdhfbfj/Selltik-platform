@@ -1,7 +1,13 @@
 import { getSellerProductViews } from "./products";
 import { calcOrderPricing } from "./order-pricing";
 import { createServerClient } from "./supabase/server";
-import type { Order, SellerOrderDailyMetric, SellerProductView } from "./types";
+import type {
+  Order,
+  SellerOrderDailyMetric,
+  SellerOrderPeriodMetric,
+  SellerOrderRevenueTrends,
+  SellerProductView,
+} from "./types";
 
 const ORDER_METRICS_COLUMNS =
   "product_id, product_name, quantity, postal_code, address, is_remote_area, celtic_deposit_amount, supply_total, order_date";
@@ -216,6 +222,154 @@ export async function getShopOrderDailyMetricsForMonth(
 ): Promise<SellerOrderDailyMetric[]> {
   const bundle = await getShopOrderMetricsBundleForMonth(shopId, monthKey);
   return bundle.dailyMetrics;
+}
+
+/** YYYY-MM-DD + delta days (local noon, timezone-safe enough for date keys) */
+export function shiftDateKey(dateKey: string, deltaDays: number): string {
+  const d = new Date(`${dateKey}T12:00:00`);
+  d.setDate(d.getDate() + deltaDays);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Monday-start week key for a date */
+export function weekStartKey(dateKey: string): string {
+  const d = new Date(`${dateKey}T12:00:00`);
+  const day = d.getDay(); // 0 Sun .. 6 Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+function formatMd(dateKey: string): string {
+  const [, m, d] = dateKey.split("-");
+  return `${Number(m)}/${Number(d)}`;
+}
+
+function formatMonthLabel(monthKey: string): string {
+  const [y, m] = monthKey.split("-");
+  return `${y}년 ${Number(m)}월`;
+}
+
+/**
+ * 일별 Map → 최근 일/주/월 기간 시리즈 (순수 함수, 테스트용).
+ * dailyDays=14, weekCount=8, monthCount=6 기본.
+ */
+export function buildRevenueTrendsFromDailyMap(
+  byDate: Map<string, { sales: number; margin: number }>,
+  todayKey: string,
+  opts?: { dailyDays?: number; weekCount?: number; monthCount?: number }
+): SellerOrderRevenueTrends {
+  const dailyDays = opts?.dailyDays ?? 14;
+  const weekCount = opts?.weekCount ?? 8;
+  const monthCount = opts?.monthCount ?? 6;
+
+  const daily: SellerOrderPeriodMetric[] = [];
+  for (let i = dailyDays - 1; i >= 0; i--) {
+    const date = shiftDateKey(todayKey, -i);
+    const v = byDate.get(date) ?? { sales: 0, margin: 0 };
+    daily.push({
+      key: date,
+      label: formatMd(date),
+      sales: v.sales,
+      margin: v.margin,
+    });
+  }
+
+  const thisWeekStart = weekStartKey(todayKey);
+  const weekly: SellerOrderPeriodMetric[] = [];
+  for (let w = weekCount - 1; w >= 0; w--) {
+    const start = shiftDateKey(thisWeekStart, -w * 7);
+    const end = shiftDateKey(start, 6);
+    let sales = 0;
+    let margin = 0;
+    for (let d = 0; d < 7; d++) {
+      const date = shiftDateKey(start, d);
+      if (date > todayKey) break;
+      const v = byDate.get(date) ?? { sales: 0, margin: 0 };
+      sales += v.sales;
+      margin += v.margin;
+    }
+    weekly.push({
+      key: start,
+      label: `${formatMd(start)}–${formatMd(end > todayKey ? todayKey : end)}`,
+      sales,
+      margin,
+    });
+  }
+
+  const [ty, tm] = todayKey.split("-").map(Number);
+  const monthly: SellerOrderPeriodMetric[] = [];
+  for (let i = monthCount - 1; i >= 0; i--) {
+    const dt = new Date(ty, tm - 1 - i, 1);
+    const y = dt.getFullYear();
+    const m = dt.getMonth() + 1;
+    const monthKey = `${y}-${String(m).padStart(2, "0")}`;
+    const lastDay = new Date(y, m, 0).getDate();
+    let sales = 0;
+    let margin = 0;
+    for (let d = 1; d <= lastDay; d++) {
+      const date = `${monthKey}-${String(d).padStart(2, "0")}`;
+      if (date > todayKey) break;
+      const v = byDate.get(date) ?? { sales: 0, margin: 0 };
+      sales += v.sales;
+      margin += v.margin;
+    }
+    monthly.push({
+      key: monthKey,
+      label: formatMonthLabel(monthKey),
+      sales,
+      margin,
+    });
+  }
+
+  return { daily, weekly, monthly };
+}
+
+async function loadConfirmedOrdersByDate(
+  shopId: string,
+  from: string,
+  to: string
+): Promise<Map<string, { sales: number; margin: number }>> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("orders")
+    .select(ORDER_METRICS_COLUMNS)
+    .eq("shop_id", shopId)
+    .gte("order_date", from)
+    .lte("order_date", to)
+    .in("status", ["paid", "exported"]);
+  if (error) throw error;
+
+  const orders = (data ?? []).map((row) => rowToOrderMetricsRow(row as never));
+  const byDate = new Map<string, { sales: number; margin: number }>();
+  if (orders.length === 0) return byDate;
+
+  const products = await getSellerProductViews(shopId);
+  const lookup = buildProductLookup(products);
+  for (const order of orders) {
+    const p = metricsRowPriceFields(order, lookup);
+    const cur = byDate.get(order.orderDate) ?? { sales: 0, margin: 0 };
+    cur.sales += p.salePrice;
+    cur.margin += p.margin;
+    byDate.set(order.orderDate, cur);
+  }
+  return byDate;
+}
+
+/** 홈 차트용 최근 일/주/월 기간 시리즈 */
+export async function getShopOrderRevenueTrends(
+  shopId: string,
+  todayKey = new Date().toISOString().slice(0, 10)
+): Promise<SellerOrderRevenueTrends> {
+  const from = shiftDateKey(todayKey, -(6 * 31));
+  const byDate = await loadConfirmedOrdersByDate(shopId, from, todayKey);
+  return buildRevenueTrendsFromDailyMap(byDate, todayKey);
 }
 
 export { monthRange };

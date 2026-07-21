@@ -1,19 +1,32 @@
 import { v4 as uuidv4 } from "uuid";
 import { createServerClient } from "./supabase/server";
-import { getShopOrderMetricsBundleForMonth, getShopOrderMetricsForDate, currentMonthKey } from "./seller-order-metrics";
+import {
+  getShopOrderMetricsBundleForMonth,
+  getShopOrderMetricsForDate,
+  getShopOrderRevenueTrends,
+  currentMonthKey,
+} from "./seller-order-metrics";
 import type {
   SellerBroadcast,
   SellerBroadcastInput,
   SellerGrowthStats,
   SellerReflectionEntry,
   SellerOrderDailyMetric,
+  SellerOrderRevenueTrends,
 } from "./types";
+
+const EMPTY_REVENUE_TRENDS: SellerOrderRevenueTrends = {
+  daily: [],
+  weekly: [],
+  monthly: [],
+};
 
 export type SellerGrowthDashboardData = {
   stats: SellerGrowthStats;
   broadcasts: SellerBroadcast[];
   reflections: SellerReflectionEntry[];
   orderDailyMetrics: SellerOrderDailyMetric[];
+  orderRevenueTrends: SellerOrderRevenueTrends;
   dbError: string | null;
 };
 
@@ -444,6 +457,7 @@ export async function getSellerGrowthDashboard(
     broadcastsResult,
     reflectionResult,
     orderResult,
+    orderRevenueTrends,
     targetRevenue,
     dailyTargetRevenue,
     dailyBroadcastRevenueResult,
@@ -460,6 +474,10 @@ export async function getSellerGrowthDashboard(
       orderCount: 0,
       dailyMetrics: [] as SellerOrderDailyMetric[],
     }),
+    safeValue(
+      () => getShopOrderRevenueTrends(shopId, dateKey),
+      EMPTY_REVENUE_TRENDS
+    ),
     safeValue(() => getMonthlyTarget(shopId, monthKey), 0),
     safeValue(() => getDailyTarget(shopId, dateKey), 0),
     dateInSelectedMonth
@@ -525,7 +543,14 @@ export async function getSellerGrowthDashboard(
     dailyOrderMargin,
   };
 
-  return { stats, broadcasts, reflections, orderDailyMetrics, dbError };
+  return {
+    stats,
+    broadcasts,
+    reflections,
+    orderDailyMetrics,
+    orderRevenueTrends,
+    dbError,
+  };
 }
 
 export { currentMonthKey, currentDateKey };

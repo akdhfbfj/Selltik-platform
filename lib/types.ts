@@ -467,6 +467,20 @@ export interface SellerOrderDailyMetric {
   cumulativeMargin: number;
 }
 
+/** 일/주/월 단위 기간별 판매·마진 (누적이 아닌 해당 기간 발생분) */
+export interface SellerOrderPeriodMetric {
+  key: string;
+  label: string;
+  sales: number;
+  margin: number;
+}
+
+export interface SellerOrderRevenueTrends {
+  daily: SellerOrderPeriodMetric[];
+  weekly: SellerOrderPeriodMetric[];
+  monthly: SellerOrderPeriodMetric[];
+}
+
 export interface ImportedOrderBatch {
   id: string;
   shopId: string | null;

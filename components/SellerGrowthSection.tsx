@@ -6,6 +6,7 @@ import type {
   SellerGrowthStats,
   SellerReflectionEntry,
   SellerOrderDailyMetric,
+  SellerOrderRevenueTrends,
 } from "@/lib/types";
 import { formatKrw } from "@/lib/parse-supply-csv";
 import SellerRevenueChart from "@/components/SellerRevenueChart";
@@ -21,6 +22,12 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+
+const EMPTY_REVENUE_TRENDS: SellerOrderRevenueTrends = {
+  daily: [],
+  weekly: [],
+  monthly: [],
+};
 
 function currentMonthKey(): string {
   return new Date().toISOString().slice(0, 7);
@@ -266,6 +273,7 @@ function applyGrowthPayload(
     setBroadcasts: (v: SellerBroadcast[]) => void;
     setReflections: (v: SellerReflectionEntry[]) => void;
     setOrderDailyMetrics: (v: SellerOrderDailyMetric[]) => void;
+    setOrderRevenueTrends: (v: SellerOrderRevenueTrends) => void;
     setTargetDraft: (v: string) => void;
     setDailyTargetDraft: (v: string) => void;
     setError: (v: string) => void;
@@ -275,6 +283,9 @@ function applyGrowthPayload(
   setters.setBroadcasts(data.broadcasts ?? []);
   setters.setReflections(data.reflections ?? []);
   setters.setOrderDailyMetrics(data.orderDailyMetrics ?? []);
+  setters.setOrderRevenueTrends(
+    data.orderRevenueTrends ?? EMPTY_REVENUE_TRENDS
+  );
   setters.setTargetDraft(
     formatDigitsWithCommas(String(data.stats?.targetRevenue ?? 0))
   );
@@ -304,6 +315,10 @@ export default function SellerGrowthSection({ initialData }: Props) {
   const [orderDailyMetrics, setOrderDailyMetrics] = useState<
     SellerOrderDailyMetric[]
   >(initialData?.orderDailyMetrics ?? []);
+  const [orderRevenueTrends, setOrderRevenueTrends] =
+    useState<SellerOrderRevenueTrends>(
+      initialData?.orderRevenueTrends ?? EMPTY_REVENUE_TRENDS
+    );
   const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState(initialData?.dbError ?? "");
   const [targetDraft, setTargetDraft] = useState(() =>
@@ -348,6 +363,7 @@ export default function SellerGrowthSection({ initialData }: Props) {
       setBroadcasts,
       setReflections,
       setOrderDailyMetrics,
+      setOrderRevenueTrends,
       setTargetDraft,
       setDailyTargetDraft,
       setError,
@@ -712,6 +728,7 @@ export default function SellerGrowthSection({ initialData }: Props) {
 
             <SellerRevenueChart
               data={orderDailyMetrics}
+              trends={orderRevenueTrends}
               monthLabel={monthLabel(monthKey)}
             />
           </div>
