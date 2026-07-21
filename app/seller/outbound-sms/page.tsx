@@ -50,10 +50,8 @@ export default function SellerOutboundSmsPage() {
     () =>
       peekSellerApiData<ProductsPayload>(SELLER_API.products)?.products ?? []
   );
-  const [loading, setLoading] = useState(
-    () =>
-      !peekSellerApiData(SELLER_API.products) ||
-      !peekSellerApiData(SELLER_API.settings)
+  const [productsReady, setProductsReady] = useState(
+    () => !!peekSellerApiData(SELLER_API.products)
   );
   const [error, setError] = useState("");
   const [smsSaveSuccess, setSmsSaveSuccess] = useState("");
@@ -76,27 +74,34 @@ export default function SellerOutboundSmsPage() {
 
   const loadData = useCallback(async (opts?: { force?: boolean }) => {
     const force = opts?.force ?? false;
-    const hasSnapshot =
-      !!peekSellerApiData(SELLER_API.products) &&
-      !!peekSellerApiData(SELLER_API.settings);
-    if (!hasSnapshot) setLoading(true);
+    if (!peekSellerApiData(SELLER_API.products)) {
+      setProductsReady(false);
+    }
 
-    const [productsRes, settingsRes, meRes] = await Promise.all([
-      fetchSellerApi<ProductsPayload>(SELLER_API.products, { force }),
-      fetchSellerApi<SettingsPayload>(SELLER_API.settings, { force }),
-      fetchSellerApi<MePayload>(SELLER_API.me, { force }),
+    // 각 API가 끝나는 대로 UI에 반영 (전체 스피너로 막지 않음)
+    await Promise.all([
+      fetchSellerApi<ProductsPayload>(SELLER_API.products, { force }).then(
+        (productsRes) => {
+          if (productsRes.ok && productsRes.data?.products) {
+            setProducts(productsRes.data.products);
+          }
+          setProductsReady(true);
+        }
+      ),
+      fetchSellerApi<SettingsPayload>(SELLER_API.settings, { force }).then(
+        (settingsRes) => {
+          if (settingsRes.ok && settingsRes.data) {
+            setSmsHeader(settingsRes.data.smsHeader ?? "");
+            setSmsFooter(settingsRes.data.smsFooter ?? "");
+          }
+        }
+      ),
+      fetchSellerApi<MePayload>(SELLER_API.me, { force }).then((meRes) => {
+        if (meRes.ok && meRes.data) {
+          setShopName(meRes.data.shop?.name ?? "");
+        }
+      }),
     ]);
-    if (productsRes.ok && productsRes.data?.products) {
-      setProducts(productsRes.data.products);
-    }
-    if (settingsRes.ok && settingsRes.data) {
-      setSmsHeader(settingsRes.data.smsHeader ?? "");
-      setSmsFooter(settingsRes.data.smsFooter ?? "");
-    }
-    if (meRes.ok && meRes.data) {
-      setShopName(meRes.data.shop?.name ?? "");
-    }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -232,13 +237,7 @@ export default function SellerOutboundSmsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-      </div>
-    );
-  }
+  const productsLoading = !productsReady;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
@@ -346,15 +345,24 @@ export default function SellerOutboundSmsPage() {
           <div className="space-y-3">
             <div className="flex flex-wrap items-end gap-2">
               <div className="min-w-[200px] flex-1">
-                <label className="mb-1 block text-xs font-medium text-slate-600">
+                <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-600">
                   상품 검색 (본문) — ★ 인기 · 최근 안내 우선
+                  {productsLoading && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+                  )}
                 </label>
-                <ProductSearchInput
-                  products={products}
-                  value={addProductId}
-                  onChange={setAddProductId}
-                  resetToken={pickerReset}
-                />
+                {productsLoading && products.length === 0 ? (
+                  <div className="flex h-[42px] items-center rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-400">
+                    상품 목록 불러오는 중…
+                  </div>
+                ) : (
+                  <ProductSearchInput
+                    products={products}
+                    value={addProductId}
+                    onChange={setAddProductId}
+                    resetToken={pickerReset}
+                  />
+                )}
               </div>
               <div className="w-20">
                 <label className="mb-1 block text-xs font-medium text-slate-600">
@@ -368,12 +376,13 @@ export default function SellerOutboundSmsPage() {
                   onChange={(e) =>
                     setAddQty(Math.max(1, parseInt(e.target.value, 10) || 1))
                   }
+                  disabled={productsLoading && products.length === 0}
                 />
               </div>
               <button
                 type="button"
                 onClick={addToCart}
-                disabled={!addProductId}
+                disabled={!addProductId || (productsLoading && products.length === 0)}
                 className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 <Plus className="h-4 w-4" />

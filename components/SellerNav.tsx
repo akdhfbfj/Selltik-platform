@@ -52,6 +52,11 @@ export default function SellerNav({ shopName }: Props) {
     setMenuOpen(false);
   }, [pathname]);
 
+  // 안내 문자 등 자주 쓰는 탭 API를 미리 받아 진입 체감 로딩 완화
+  useEffect(() => {
+    prefetchSellerTab("/seller/outbound-sms");
+  }, []);
+
   useEffect(() => {
     document.body.style.overflow = menuOpen ? "hidden" : "";
     return () => {
