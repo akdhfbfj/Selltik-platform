@@ -22,6 +22,11 @@ import {
 import { isNoiseProductLineName } from "@/lib/order-draft-helpers";
 import { buildReplyDraftLabel } from "@/lib/refine-order-draft";
 import { canSaveLearnSample } from "@/lib/reply-learn-sample";
+import {
+  fetchSellerApi,
+  peekSellerApiData,
+  SELLER_API,
+} from "@/lib/seller-api-cache";
 import { SELLER_INPUT_CLASS } from "@/lib/seller-ui";
 import type { OrderDraftBundle, QueuedReplyDraft, SellerProductView } from "@/lib/types";
 import Script from "next/script";
@@ -41,7 +46,11 @@ export default function SellerReplyPage() {
   const [draftBundle, setDraftBundle] = useState<OrderDraftBundle | null>(null);
   const [isRefined, setIsRefined] = useState(false);
   const [queue, setQueue] = useState<QueuedReplyDraft[]>([]);
-  const [products, setProducts] = useState<SellerProductView[]>([]);
+  const [products, setProducts] = useState<SellerProductView[]>(
+    () =>
+      peekSellerApiData<{ products: SellerProductView[] }>(SELLER_API.products)
+        ?.products ?? []
+  );
   const [parsing, setParsing] = useState(false);
   const [refining, setRefining] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -80,10 +89,9 @@ export default function SellerReplyPage() {
   }, [sourceImageUrl]);
 
   useEffect(() => {
-    fetch("/api/seller/products")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.products) setProducts(data.products);
+    void fetchSellerApi<{ products: SellerProductView[] }>(SELLER_API.products)
+      .then((res) => {
+        if (res.ok && res.data?.products) setProducts(res.data.products);
       })
       .catch(() => {});
   }, []);

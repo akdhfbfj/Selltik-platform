@@ -9,6 +9,12 @@ import {
 } from "@/lib/build-outbound-sms";
 import { formatKrw } from "@/lib/parse-supply-csv";
 import { REMOTE_SHIPPING_SURCHARGE } from "@/lib/remote-area";
+import {
+  fetchSellerApi,
+  peekSellerApiData,
+  SELLER_API,
+  writeSellerApiCache,
+} from "@/lib/seller-api-cache";
 import { SELLER_INPUT_CLASS } from "@/lib/seller-ui";
 import {
   getDefaultSmsFooter,
@@ -31,13 +37,32 @@ interface CartLine {
   quantity: number;
 }
 
+type ProductsPayload = {
+  products: SellerProductView[];
+  total?: number;
+  pendingReviewCount?: number;
+};
+type SettingsPayload = { smsHeader?: string; smsFooter?: string };
+type MePayload = { shop?: { name?: string } | null };
+
 export default function SellerOutboundSmsPage() {
-  const [products, setProducts] = useState<SellerProductView[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<SellerProductView[]>(
+    () =>
+      peekSellerApiData<ProductsPayload>(SELLER_API.products)?.products ?? []
+  );
+  const [loading, setLoading] = useState(
+    () =>
+      !peekSellerApiData(SELLER_API.products) ||
+      !peekSellerApiData(SELLER_API.settings)
+  );
   const [error, setError] = useState("");
   const [smsSaveSuccess, setSmsSaveSuccess] = useState("");
-  const [smsHeader, setSmsHeader] = useState("");
-  const [smsFooter, setSmsFooter] = useState("");
+  const [smsHeader, setSmsHeader] = useState(
+    () => peekSellerApiData<SettingsPayload>(SELLER_API.settings)?.smsHeader ?? ""
+  );
+  const [smsFooter, setSmsFooter] = useState(
+    () => peekSellerApiData<SettingsPayload>(SELLER_API.settings)?.smsFooter ?? ""
+  );
   const [cart, setCart] = useState<CartLine[]>([]);
   const [outboundRemoteArea, setOutboundRemoteArea] = useState(false);
   const [addProductId, setAddProductId] = useState("");
@@ -45,33 +70,37 @@ export default function SellerOutboundSmsPage() {
   const [pickerReset, setPickerReset] = useState(0);
   const [savingSettings, setSavingSettings] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [shopName, setShopName] = useState("");
+  const [shopName, setShopName] = useState(
+    () => peekSellerApiData<MePayload>(SELLER_API.me)?.shop?.name ?? ""
+  );
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (opts?: { force?: boolean }) => {
+    const force = opts?.force ?? false;
+    const hasSnapshot =
+      !!peekSellerApiData(SELLER_API.products) &&
+      !!peekSellerApiData(SELLER_API.settings);
+    if (!hasSnapshot) setLoading(true);
+
     const [productsRes, settingsRes, meRes] = await Promise.all([
-      fetch("/api/seller/products"),
-      fetch("/api/seller/settings"),
-      fetch("/api/seller/me"),
+      fetchSellerApi<ProductsPayload>(SELLER_API.products, { force }),
+      fetchSellerApi<SettingsPayload>(SELLER_API.settings, { force }),
+      fetchSellerApi<MePayload>(SELLER_API.me, { force }),
     ]);
-    if (productsRes.ok) {
-      const data = await productsRes.json();
-      setProducts(data.products);
+    if (productsRes.ok && productsRes.data?.products) {
+      setProducts(productsRes.data.products);
     }
-    if (settingsRes.ok) {
-      const data = await settingsRes.json();
-      setSmsHeader(data.smsHeader ?? "");
-      setSmsFooter(data.smsFooter ?? "");
+    if (settingsRes.ok && settingsRes.data) {
+      setSmsHeader(settingsRes.data.smsHeader ?? "");
+      setSmsFooter(settingsRes.data.smsFooter ?? "");
     }
-    if (meRes.ok) {
-      const data = await meRes.json();
-      setShopName(data.shop?.name ?? "");
+    if (meRes.ok && meRes.data) {
+      setShopName(meRes.data.shop?.name ?? "");
     }
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   const cartItems = useMemo(
@@ -118,11 +147,18 @@ export default function SellerOutboundSmsPage() {
   const bumpOutboundUsage = useCallback(async (productIds: string[]) => {
     if (productIds.length === 0) return;
     const now = new Date().toISOString();
+    const idSet = new Set(productIds);
     setProducts((prev) => {
-      const idSet = new Set(productIds);
-      return prev.map((p) =>
+      const next = prev.map((p) =>
         idSet.has(p.id) ? { ...p, lastOutboundAt: now } : p
       );
+      const cached = peekSellerApiData<ProductsPayload>(SELLER_API.products);
+      writeSellerApiCache(SELLER_API.products, {
+        products: next,
+        total: next.length,
+        pendingReviewCount: cached?.pendingReviewCount,
+      });
+      return next;
     });
     await fetch("/api/seller/products/outbound-usage", {
       method: "POST",
@@ -177,6 +213,7 @@ export default function SellerOutboundSmsPage() {
       const data = await res.json();
       setError(data.error || "문구 저장에 실패했습니다.");
     } else {
+      writeSellerApiCache(SELLER_API.settings, { smsHeader, smsFooter });
       setSmsSaveSuccess("상·하단 문구가 저장되었습니다.");
     }
     setSavingSettings(false);

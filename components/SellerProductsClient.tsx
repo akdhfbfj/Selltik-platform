@@ -7,6 +7,11 @@ import {
 } from "@/lib/product-review-ui";
 import { formatKrw } from "@/lib/parse-supply-csv";
 import { computeProductProfit } from "@/lib/product-profit";
+import {
+  fetchSellerApi,
+  SELLER_API,
+  writeSellerApiCache,
+} from "@/lib/seller-api-cache";
 import { extractProductComposition, parseProfitRate } from "@/lib/seller-ui";
 import type { SellerProductView } from "@/lib/types";
 import {
@@ -115,14 +120,24 @@ export default function SellerProductsClient({
     }
   }, [initialPendingCount]);
 
+  useEffect(() => {
+    writeSellerApiCache(SELLER_API.products, {
+      products: initialProducts,
+      total: initialProducts.length,
+      pendingReviewCount: initialPendingCount,
+    });
+  }, [initialProducts, initialPendingCount]);
+
   const refreshProducts = useCallback(async () => {
     setRefreshing(true);
-    const res = await fetch("/api/seller/products");
-    if (res.ok) {
-      const data = await res.json();
-      setProducts(data.products);
-      setPendingReviewCount(data.pendingReviewCount ?? 0);
-      setDrafts(buildDraftMap(data.products));
+    const res = await fetchSellerApi<{
+      products: SellerProductView[];
+      pendingReviewCount?: number;
+    }>(SELLER_API.products, { force: true });
+    if (res.ok && res.data?.products) {
+      setProducts(res.data.products);
+      setPendingReviewCount(res.data.pendingReviewCount ?? 0);
+      setDrafts(buildDraftMap(res.data.products));
     }
     setRefreshing(false);
   }, []);
@@ -157,11 +172,18 @@ export default function SellerProductsClient({
     } else {
       const count = data.count ?? productIds?.length ?? 0;
       const idSet = new Set(productIds ?? pendingProducts.map((p) => p.id));
-      setProducts((prev) =>
-        prev.map((p) =>
+      setProducts((prev) => {
+        const next = prev.map((p) =>
           idSet.has(p.id) ? { ...p, needsReview: false } : p
-        )
-      );
+        );
+        const nextPending = Math.max(0, pendingReviewCount - count);
+        writeSellerApiCache(SELLER_API.products, {
+          products: next,
+          total: next.length,
+          pendingReviewCount: nextPending,
+        });
+        return next;
+      });
       setPendingReviewCount((c) => Math.max(0, c - count));
       setShowPendingOnly(false);
       setShowReviewModal(false);
@@ -184,11 +206,17 @@ export default function SellerProductsClient({
       const data = await res.json();
       setError(data.error || "인기 상품 설정에 실패했습니다.");
     } else {
-      setProducts((prev) =>
-        prev.map((p) =>
+      setProducts((prev) => {
+        const updated = prev.map((p) =>
           p.id === productId ? { ...p, isFavorite: next } : p
-        )
-      );
+        );
+        writeSellerApiCache(SELLER_API.products, {
+          products: updated,
+          total: updated.length,
+          pendingReviewCount,
+        });
+        return updated;
+      });
     }
     setFavoritingId(null);
   };
@@ -225,6 +253,11 @@ export default function SellerProductsClient({
         setSuccess(`SKU ${aliases.length}건이 저장되었습니다.`);
         setProducts(data.products);
         setDrafts(buildDraftMap(data.products));
+        writeSellerApiCache(SELLER_API.products, {
+          products: data.products,
+          total: data.products.length,
+          pendingReviewCount,
+        });
       }
     } catch {
       setError("저장 중 오류가 발생했습니다. 네트워크를 확인해 주세요.");

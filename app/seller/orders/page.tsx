@@ -14,6 +14,11 @@ import { findDuplicateOrders } from "@/lib/order-duplicates";
 import { matchesOrderSearch } from "@/lib/order-search";
 import type { CompletedGroup } from "@/lib/order-spreadsheet-display";
 import { formatKrw } from "@/lib/parse-supply-csv";
+import {
+  fetchSellerApi,
+  peekSellerApiData,
+  SELLER_API,
+} from "@/lib/seller-api-cache";
 import { SELLER_INPUT_CLASS } from "@/lib/seller-ui";
 import type { Order, OrderListTab, SellerProductView } from "@/lib/types";
 import { ORDER_LIST_TABS } from "@/lib/types";
@@ -31,14 +36,27 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+type OrdersPayload = { orders: Order[]; total?: number };
+type ProductsPayload = { products: SellerProductView[] };
+type MePayload = { shop?: { name?: string } | null };
+
 export default function SellerOrdersPage() {
   const searchParams = useSearchParams();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [products, setProducts] = useState<SellerProductView[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState<Order[]>(
+    () => peekSellerApiData<OrdersPayload>(SELLER_API.orders)?.orders ?? []
+  );
+  const [products, setProducts] = useState<SellerProductView[]>(
+    () =>
+      peekSellerApiData<ProductsPayload>(SELLER_API.products)?.products ?? []
+  );
+  const [loading, setLoading] = useState(
+    () => !peekSellerApiData(SELLER_API.orders)
+  );
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [shopName, setShopName] = useState("");
+  const [shopName, setShopName] = useState(
+    () => peekSellerApiData<MePayload>(SELLER_API.me)?.shop?.name ?? ""
+  );
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(
     new Set()
   );
@@ -57,30 +75,31 @@ export default function SellerOrdersPage() {
     null
   );
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (opts?: { force?: boolean }) => {
+    const force = opts?.force ?? false;
+    if (force || !peekSellerApiData(SELLER_API.orders)) {
+      setLoading(true);
+    }
+
     const [ordersRes, productsRes, meRes] = await Promise.all([
-      fetch("/api/seller/orders"),
-      fetch("/api/seller/products"),
-      fetch("/api/seller/me"),
+      fetchSellerApi<OrdersPayload>(SELLER_API.orders, { force }),
+      fetchSellerApi<ProductsPayload>(SELLER_API.products, { force }),
+      fetchSellerApi<MePayload>(SELLER_API.me, { force }),
     ]);
-    if (ordersRes.ok) {
-      const data = await ordersRes.json();
-      setOrders(data.orders);
+    if (ordersRes.ok && ordersRes.data?.orders) {
+      setOrders(ordersRes.data.orders);
     }
-    if (productsRes.ok) {
-      const data = await productsRes.json();
-      setProducts(data.products);
+    if (productsRes.ok && productsRes.data?.products) {
+      setProducts(productsRes.data.products);
     }
-    if (meRes.ok) {
-      const data = await meRes.json();
-      setShopName(data.shop?.name ?? "");
+    if (meRes.ok && meRes.data) {
+      setShopName(meRes.data.shop?.name ?? "");
     }
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   useEffect(() => {
@@ -126,7 +145,7 @@ export default function SellerOrdersPage() {
         next.delete(id);
         return next;
       });
-      loadData();
+      void loadData({ force: true });
     }
   };
 
@@ -152,7 +171,7 @@ export default function SellerOrdersPage() {
     } else {
       setSuccess("발주가 수정되었습니다.");
       setEditingOrder(null);
-      loadData();
+      void loadData({ force: true });
     }
     setUpdatingOrder(false);
   };
@@ -233,7 +252,7 @@ export default function SellerOrdersPage() {
       setSuccess(
         "입금 완료 처리되었습니다. 「최종 발주서」 탭에서 xlsx를 출력하세요."
       );
-      loadData();
+      void loadData({ force: true });
     }
     setMarkingPaidId(null);
   };
@@ -260,7 +279,7 @@ export default function SellerOrdersPage() {
       setSuccess(
         `${data.count ?? selectedDraftOrders.length}건 입금 완료. 최종 발주서 탭에서 출력하세요.`
       );
-      loadData();
+      void loadData({ force: true });
     }
     setBulkActioning(false);
   };
@@ -299,7 +318,7 @@ export default function SellerOrdersPage() {
       );
       setSelectedOrderIds(new Set());
       setStatusTab("draft");
-      loadData();
+      void loadData({ force: true });
     }
     setBulkActioning(false);
   };
@@ -332,7 +351,7 @@ export default function SellerOrdersPage() {
       setError(data.error || "택배비 수정에 실패했습니다.");
     } else {
       setSuccess("택배비가 수정되었습니다.");
-      loadData();
+      void loadData({ force: true });
     }
     setSavingShippingId(null);
   };
@@ -362,7 +381,7 @@ export default function SellerOrdersPage() {
       if (editingOrder && selectedOrders.some((o) => o.id === editingOrder.id)) {
         setEditingOrder(null);
       }
-      loadData();
+      void loadData({ force: true });
     }
     setBulkActioning(false);
   };
@@ -423,7 +442,7 @@ export default function SellerOrdersPage() {
       setShowExportModal(false);
       if (exportMode === "final") {
         setSelectedOrderIds(new Set());
-        loadData();
+        void loadData({ force: true });
       }
     }
     setExporting(false);

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { prefetchSellerTab } from "@/lib/seller-api-cache";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import {
   LayoutDashboard,
@@ -92,7 +93,13 @@ export default function SellerNav({ shopName }: Props) {
         <div className="flex items-center gap-1 sm:gap-2">
           <nav className="hidden items-center gap-1 sm:flex">
             {NAV_LINKS.map(({ href, label, icon: Icon }) => (
-              <Link key={href} href={href} className={linkClass(href)}>
+              <Link
+                key={href}
+                href={href}
+                className={linkClass(href)}
+                onPointerEnter={() => prefetchSellerTab(href)}
+                onFocus={() => prefetchSellerTab(href)}
+              >
                 <Icon className="h-4 w-4" />
                 {label}
               </Link>
@@ -139,6 +146,8 @@ export default function SellerNav({ shopName }: Props) {
                   key={href}
                   href={href}
                   className={linkClass(href, true)}
+                  onPointerEnter={() => prefetchSellerTab(href)}
+                  onFocus={() => prefetchSellerTab(href)}
                   onClick={() => setMenuOpen(false)}
                 >
                   <Icon className="h-4 w-4" />

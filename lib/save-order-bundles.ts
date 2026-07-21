@@ -1,4 +1,5 @@
 import { bundleLineToOrderPayload } from "./order-draft-helpers";
+import { invalidateSellerApiCache, SELLER_API } from "./seller-api-cache";
 import type { OrderDraftBundle, OrderDraftPreview } from "./types";
 
 /** chunk당 최대 품목 줄 수 (Vercel 10초 타임아웃 회피) */
@@ -282,6 +283,10 @@ export async function saveOrderDraftBundles(
     };
   }
 
+  if (created > 0) {
+    invalidateSellerApiCache(SELLER_API.orders);
+  }
+
   return aggregateBundleResults(items, flat, created, apiErrors);
 }
 
@@ -315,6 +320,10 @@ export async function saveOrderPayloadsInChunks(
     ) {
       failed += chunk.length;
     }
+  }
+
+  if (created > 0) {
+    invalidateSellerApiCache(SELLER_API.orders);
   }
 
   return {
