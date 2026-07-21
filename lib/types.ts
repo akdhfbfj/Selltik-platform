@@ -252,6 +252,8 @@ export interface SellerProductView extends MasterProduct {
   smsName: string;
   /** 셀러가 지정한 인기 상품 (안내 문자 검색 상단 노출) */
   isFavorite: boolean;
+  /** 셀러가 숨긴 상품 (기본 목록에서 제외, 검색 시 표시) */
+  isHidden: boolean;
   /** 안내 문자에 최근 사용한 시각 (검색 상단 노출) */
   lastOutboundAt?: string | null;
   /** 공급가·판매가 등 마스터 정보 변경 시 셀러 확인 필요 */

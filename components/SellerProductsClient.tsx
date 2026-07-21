@@ -21,6 +21,8 @@ import {
   ArrowUpDown,
   Check,
   ChevronRight,
+  Eye,
+  EyeOff,
   ListFilter,
   Loader2,
   Search,
@@ -93,10 +95,12 @@ export default function SellerProductsClient({
   );
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showPendingOnly, setShowPendingOnly] = useState(false);
+  const [showHiddenOnly, setShowHiddenOnly] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [ackingId, setAckingId] = useState<string | null>(null);
   const [favoritingId, setFavoritingId] = useState<string | null>(null);
+  const [hidingId, setHidingId] = useState<string | null>(null);
   const [bulkAcking, setBulkAcking] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -221,6 +225,38 @@ export default function SellerProductsClient({
     setFavoritingId(null);
   };
 
+  const toggleHidden = async (productId: string, next: boolean) => {
+    setHidingId(productId);
+    setError("");
+    const res = await fetch("/api/seller/products/hidden", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId, hidden: next }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error || "상품 숨김 설정에 실패했습니다.");
+    } else {
+      setProducts((prev) => {
+        const updated = prev.map((p) =>
+          p.id === productId ? { ...p, isHidden: next } : p
+        );
+        writeSellerApiCache(SELLER_API.products, {
+          products: updated,
+          total: updated.length,
+          pendingReviewCount,
+        });
+        return updated;
+      });
+      if (next) {
+        setSuccess("상품을 숨겼습니다. 「숨김」에서 확인할 수 있습니다.");
+      } else {
+        setSuccess("숨김을 해제했습니다.");
+      }
+    }
+    setHidingId(null);
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError("");
@@ -266,9 +302,21 @@ export default function SellerProductsClient({
     }
   };
 
+  const hiddenCount = useMemo(
+    () => products.filter((p) => p.isHidden).length,
+    [products]
+  );
+
   const filtered = products.filter((p) => {
     if (showPendingOnly && !p.needsReview) return false;
-    const q = query.toLowerCase();
+    const q = query.trim().toLowerCase();
+    const hasQuery = q.length > 0;
+    if (showHiddenOnly) {
+      if (!p.isHidden) return false;
+    } else if (!hasQuery && p.isHidden) {
+      return false;
+    }
+    if (!hasQuery) return true;
     const composition = extractProductComposition(p.description).toLowerCase();
     return (
       p.officialName.toLowerCase().includes(q) ||
@@ -412,7 +460,8 @@ export default function SellerProductsClient({
         <h2 className="text-2xl font-bold text-slate-900">상품·공급가</h2>
         <p className="mt-1 text-sm text-slate-500">
           SKU는 본인만 설정합니다. ★ 인기 상품은 안내 문자 검색 상단에
-          먼저 표시됩니다. 품절 상품은 회색으로 표시됩니다.
+          먼저 표시됩니다. 안 파는 상품은 숨길 수 있고, 검색하면 숨김
+          표시와 함께 찾을 수 있습니다. 품절 상품은 회색으로 표시됩니다.
         </p>
         {pendingReviewCount > 0 && (
           <button
@@ -436,6 +485,38 @@ export default function SellerProductsClient({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
+          </div>
+          <div
+            className="flex shrink-0 rounded-xl border border-slate-200 bg-white p-0.5"
+            role="tablist"
+            aria-label="상품 목록 필터"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!showHiddenOnly}
+              onClick={() => setShowHiddenOnly(false)}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                !showHiddenOnly
+                  ? "bg-emerald-50 text-emerald-800"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              판매중
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={showHiddenOnly}
+              onClick={() => setShowHiddenOnly(true)}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                showHiddenOnly
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              숨김{hiddenCount > 0 ? ` ${hiddenCount}` : ""}
+            </button>
           </div>
           {pendingReviewCount > 0 && (
             <>
@@ -508,7 +589,13 @@ export default function SellerProductsClient({
           <p className="py-16 text-center text-sm text-slate-400">
             {showPendingOnly
               ? "확인 필요한 상품이 없습니다."
-              : "검색 결과가 없습니다."}
+              : showHiddenOnly
+                ? query.trim()
+                  ? "숨김 상품 중 검색 결과가 없습니다."
+                  : "숨긴 상품이 없습니다."
+                : query.trim()
+                  ? "검색 결과가 없습니다."
+                  : "표시할 상품이 없습니다."}
           </p>
         ) : (
           <>
@@ -536,9 +623,9 @@ export default function SellerProductsClient({
             <div className="overflow-x-auto pb-4">
             <table className="w-full min-w-[820px] table-fixed border-separate border-spacing-x-0 border-spacing-y-1.5 text-sm">
               <colgroup>
-                <col className="w-[4%]" />
+                <col className="w-[7%]" />
                 <col className="w-[12%]" />
-                <col className="w-[31%]" />
+                <col className="w-[28%]" />
                 <col className="w-[11%]" />
                 <col className="w-[11%]" />
                 <col className="w-[13%]" />
@@ -547,10 +634,10 @@ export default function SellerProductsClient({
               <thead className="sticky top-0 z-10">
                 <tr>
                   <th
-                    className="border border-slate-300 bg-amber-50 px-1 py-2 text-center text-xs font-semibold text-amber-700 first:rounded-l-lg"
-                    title="인기 상품"
+                    className="border border-slate-300 bg-amber-50 px-1 py-2 text-center text-[10px] font-semibold text-amber-700 first:rounded-l-lg"
+                    title="인기 · 숨김"
                   >
-                    ★
+                    ★ / 숨김
                   </th>
                   <th className="border border-l-0 border-slate-300 bg-sky-100 px-2 py-2 text-left text-xs font-semibold text-sky-900">
                     SKU
@@ -600,6 +687,7 @@ export default function SellerProductsClient({
                   );
                   const review = p.needsReview;
                   const soldOut = p.isSoldOut;
+                  const hidden = p.isHidden;
                   const soldOutCell = soldOut
                     ? "bg-slate-100/90 text-slate-500"
                     : "";
@@ -609,46 +697,70 @@ export default function SellerProductsClient({
                       ref={(el) => {
                         productRefs.current[p.id] = el;
                       }}
-                      className={`group align-middle ${soldOut ? "opacity-80" : ""}`}
+                      className={`group align-middle ${
+                        soldOut || hidden ? "opacity-80" : ""
+                      }`}
                     >
                       <td
-                        className={`align-middle border border-slate-300 px-1 py-1.5 text-center first:rounded-l-lg ${
-                          soldOut ? "bg-slate-100/90" : "bg-amber-50/50"
+                        className={`align-middle border border-slate-300 px-0.5 py-1.5 text-center first:rounded-l-lg ${
+                          soldOut || hidden
+                            ? "bg-slate-100/90"
+                            : "bg-amber-50/50"
                         }`}
                       >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            toggleFavorite(p.id, !p.isFavorite)
-                          }
-                          disabled={favoritingId === p.id}
-                          className="inline-flex items-center justify-center rounded p-1 text-amber-500 transition hover:bg-amber-100 hover:text-amber-600 disabled:opacity-50"
-                          title={
-                            p.isFavorite
-                              ? "인기 상품 해제"
-                              : "인기 상품으로 등록"
-                          }
-                          aria-pressed={p.isFavorite}
-                        >
-                          {favoritingId === p.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Star
-                              className={`h-4 w-4 ${
-                                p.isFavorite
-                                  ? "fill-amber-400 text-amber-500"
-                                  : "text-slate-300"
-                              }`}
-                            />
-                          )}
-                        </button>
+                        <div className="flex items-center justify-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleFavorite(p.id, !p.isFavorite)
+                            }
+                            disabled={favoritingId === p.id}
+                            className="inline-flex items-center justify-center rounded p-1 text-amber-500 transition hover:bg-amber-100 hover:text-amber-600 disabled:opacity-50"
+                            title={
+                              p.isFavorite
+                                ? "인기 상품 해제"
+                                : "인기 상품으로 등록"
+                            }
+                            aria-pressed={p.isFavorite}
+                          >
+                            {favoritingId === p.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Star
+                                className={`h-4 w-4 ${
+                                  p.isFavorite
+                                    ? "fill-amber-400 text-amber-500"
+                                    : "text-slate-300"
+                                }`}
+                              />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleHidden(p.id, !p.isHidden)}
+                            disabled={hidingId === p.id}
+                            className="inline-flex items-center justify-center rounded p-1 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 disabled:opacity-50"
+                            title={
+                              p.isHidden ? "숨김 해제" : "목록에서 숨기기"
+                            }
+                            aria-pressed={p.isHidden}
+                          >
+                            {hidingId === p.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : p.isHidden ? (
+                              <EyeOff className="h-4 w-4 text-slate-600" />
+                            ) : (
+                              <Eye className="h-4 w-4 text-slate-300" />
+                            )}
+                          </button>
+                        </div>
                       </td>
                       <td
                         className={`align-middle border border-l-0 border-slate-300 px-2 py-1.5 ${
                           review
                             ? "bg-amber-50 ring-1 ring-inset ring-amber-200"
-                            : soldOut
-                              ? soldOutCell
+                            : soldOut || hidden
+                              ? soldOutCell || "bg-slate-100/90"
                               : "bg-sky-50/90 group-hover:bg-sky-100/80"
                         }`}
                       >
@@ -660,6 +772,11 @@ export default function SellerProductsClient({
                               }
                             >
                               <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                            </span>
+                          )}
+                          {hidden && (
+                            <span className="shrink-0 rounded bg-slate-700 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                              숨김
                             </span>
                           )}
                           <input
@@ -692,17 +809,22 @@ export default function SellerProductsClient({
                       </td>
                       <td
                         className={`align-middle border border-l-0 border-slate-300 px-2 py-1.5 ${
-                          soldOut
-                            ? soldOutCell
+                          soldOut || hidden
+                            ? soldOutCell || "bg-slate-100/90 text-slate-500"
                             : "bg-slate-50/95 group-hover:bg-slate-100/90"
                         }`}
                       >
                         <p
                           className={`break-words text-xs leading-snug ${
-                            soldOut ? "text-slate-500" : "text-slate-700"
+                            soldOut || hidden ? "text-slate-500" : "text-slate-700"
                           }`}
                         >
                           {p.officialName}
+                          {hidden && (
+                            <span className="ml-1.5 rounded bg-slate-700 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                              숨김
+                            </span>
+                          )}
                           {soldOut && (
                             <span className="ml-1.5 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
                               품절

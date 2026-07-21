@@ -9,19 +9,30 @@ import type { SellerProductView } from "../lib/types";
 function mockProduct(
   partial: Partial<SellerProductView> & Pick<SellerProductView, "id" | "officialName">
 ): SellerProductView {
+  const purchasePrice = partial.purchasePrice ?? 8000;
+  const baseShipping = partial.baseShipping ?? 0;
+  const supplyTotal = partial.supplyTotal ?? purchasePrice + baseShipping;
   return {
     id: partial.id,
     officialName: partial.officialName,
-    smsName: partial.smsName ?? "",
+    description: partial.description ?? "",
+    purchasePrice,
+    baseShipping,
+    supplyTotal,
     consumerPrice: partial.consumerPrice ?? 10000,
-    purchasePrice: partial.purchasePrice ?? 8000,
-    shippingFee: partial.shippingFee ?? 0,
+    profitAmount: partial.profitAmount ?? 0,
     profitRate: partial.profitRate ?? "10",
-    isFavorite: partial.isFavorite ?? false,
-    isSoldOut: partial.isSoldOut ?? false,
-    lastOutboundAt: partial.lastOutboundAt ?? null,
     sortOrder: partial.sortOrder ?? 0,
-    pendingReview: partial.pendingReview ?? false,
+    isSoldOut: partial.isSoldOut ?? false,
+    celticPurchasePrice: partial.celticPurchasePrice ?? purchasePrice,
+    celticBaseShipping: partial.celticBaseShipping ?? baseShipping,
+    celticSupplyTotal: partial.celticSupplyTotal ?? supplyTotal,
+    updatedAt: partial.updatedAt ?? "",
+    smsName: partial.smsName ?? "",
+    isFavorite: partial.isFavorite ?? false,
+    isHidden: partial.isHidden ?? false,
+    lastOutboundAt: partial.lastOutboundAt ?? null,
+    needsReview: partial.needsReview ?? false,
   };
 }
 

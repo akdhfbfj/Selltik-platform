@@ -67,6 +67,9 @@ export function formatDbError(error: { message?: string; code?: string }): strin
   if (msg.includes("seller_product_favorites") && msg.includes("does not exist")) {
     return "DB 테이블이 없습니다. Supabase SQL Editor에서 011_seller_product_favorites.sql을 실행하세요.";
   }
+  if (msg.includes("seller_product_hidden") && msg.includes("does not exist")) {
+    return "DB 테이블이 없습니다. Supabase SQL Editor에서 021_seller_product_hidden.sql을 실행하세요.";
+  }
   if (msg.includes("seller_outbound_usage") && msg.includes("does not exist")) {
     return "DB 테이블이 없습니다. Supabase SQL Editor에서 013_seller_outbound_usage.sql을 실행하세요.";
   }
@@ -609,6 +612,7 @@ export const getSellerProductViews = cache(async (
     { data: aliases, error: aliasError },
     { data: reviews, error: reviewError },
     { data: favorites, error: favoriteError },
+    { data: hiddenRows, error: hiddenError },
     { data: outboundUsage, error: outboundError },
   ] = await Promise.all([
     supabase.from("seller_product_aliases").select("*").eq("shop_id", shopId),
@@ -619,6 +623,10 @@ export const getSellerProductViews = cache(async (
       .eq("needs_review", true),
     supabase
       .from("seller_product_favorites")
+      .select("product_id")
+      .eq("shop_id", shopId),
+    supabase
+      .from("seller_product_hidden")
       .select("product_id")
       .eq("shop_id", shopId),
     supabase
@@ -638,6 +646,18 @@ export const getSellerProductViews = cache(async (
   } else {
     for (const f of favorites ?? []) {
       favoriteSet.add(f.product_id as string);
+    }
+  }
+
+  const hiddenSet = new Set<string>();
+  if (hiddenError) {
+    const msg = hiddenError.message ?? "";
+    if (!msg.includes("seller_product_hidden") || !msg.includes("does not exist")) {
+      throw hiddenError;
+    }
+  } else {
+    for (const h of hiddenRows ?? []) {
+      hiddenSet.add(h.product_id as string);
     }
   }
 
@@ -675,6 +695,7 @@ export const getSellerProductViews = cache(async (
       ...p,
       smsName: aliasMap.get(p.id) ?? "",
       isFavorite: favoriteSet.has(p.id),
+      isHidden: hiddenSet.has(p.id),
       lastOutboundAt: outboundMap.get(p.id) ?? null,
       needsReview: !!review,
       reviewReason: review?.reason,
@@ -682,6 +703,41 @@ export const getSellerProductViews = cache(async (
     };
   });
 });
+
+export async function setSellerProductHidden(
+  shopId: string,
+  productId: string,
+  hidden: boolean
+): Promise<void> {
+  const supabase = createServerClient();
+
+  if (hidden) {
+    const { data: existing, error: fetchError } = await supabase
+      .from("seller_product_hidden")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("product_id", productId)
+      .maybeSingle();
+    if (fetchError) throw fetchError;
+    if (existing) return;
+
+    const { error } = await supabase.from("seller_product_hidden").insert({
+      id: uuidv4(),
+      shop_id: shopId,
+      product_id: productId,
+      created_at: new Date().toISOString(),
+    });
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase
+    .from("seller_product_hidden")
+    .delete()
+    .eq("shop_id", shopId)
+    .eq("product_id", productId);
+  if (error) throw error;
+}
 
 export async function setSellerProductFavorite(
   shopId: string,
