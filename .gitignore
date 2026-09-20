@@ -42,3 +42,6 @@ next-env.d.ts
 # data
 /data/*.db
 /public/uploads/*
+
+# android 서명 키 (절대 커밋 금지 — 이 키를 잃으면 앱 업데이트 시 재설치가 필요해짐)
+/android-signing/

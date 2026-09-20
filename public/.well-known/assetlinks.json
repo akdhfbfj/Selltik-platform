@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.selltik.seller",
+        "sha256_cert_fingerprints": ["72:9A:BA:71:4B:CF:3A:2A:17:AD:EF:95:A1:28:E2:24:A9:6B:3A:82:04:4C:97:B5:75:A5:7D:FE:25:CB:59:FF"]
+      }
+    }]
