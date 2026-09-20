@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
+import { ADMIN_MEMBERS } from "./admin-team";
 
 export const SESSION_COOKIE = "admin_session";
+export const ADMIN_NAME_COOKIE = "admin_name";
 
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -45,4 +47,15 @@ export function isAuthenticated(sessionValue: string | undefined): boolean {
 export async function requireAuth(): Promise<boolean> {
   const cookieStore = await cookies();
   return isAuthenticated(cookieStore.get(SESSION_COOKIE)?.value);
+}
+
+export function isValidAdminName(name: string): boolean {
+  return (ADMIN_MEMBERS as readonly string[]).includes(name);
+}
+
+/** 로그인 시 선택한 닉네임. 닉네임 도입 이전 세션이면 빈 문자열. */
+export async function getAdminName(): Promise<string> {
+  const cookieStore = await cookies();
+  const name = cookieStore.get(ADMIN_NAME_COOKIE)?.value ?? "";
+  return isValidAdminName(name) ? name : "";
 }

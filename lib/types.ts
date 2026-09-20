@@ -483,6 +483,44 @@ export interface SellerOrderRevenueTrends {
   monthly: SellerOrderPeriodMetric[];
 }
 
+export type WorkItemType = "task" | "inquiry";
+export type WorkItemAuthorType = "admin" | "seller";
+export type WorkItemStatus = "open" | "answered" | "done";
+
+export interface WorkItem {
+  id: string;
+  type: WorkItemType;
+  title: string;
+  body: string;
+  authorType: WorkItemAuthorType;
+  authorName: string;
+  shopId: string;
+  shopName: string;
+  assignee: string;
+  status: WorkItemStatus;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string;
+  replyCount: number;
+}
+
+export interface WorkItemInput {
+  type: WorkItemType;
+  title: string;
+  body: string;
+  authorName?: string;
+  assignee?: string;
+}
+
+export interface WorkItemReply {
+  id: string;
+  workItemId: string;
+  authorType: WorkItemAuthorType;
+  authorName: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface ImportedOrderBatch {
   id: string;
   shopId: string | null;

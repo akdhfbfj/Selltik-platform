@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   ClipboardPaste,
   FileText,
+  HelpCircle,
   LogOut,
   Menu,
   Package,
@@ -30,6 +31,7 @@ const NAV_LINKS = [
   { href: "/seller/reply", label: "답장 분석", icon: ClipboardPaste },
   { href: "/seller/orders", label: "발주", icon: FileText },
   { href: "/seller/recommend", label: "신상품 추천", icon: Sparkles },
+  { href: "/seller/questions", label: "문의하기", icon: HelpCircle },
   { href: "/seller/account", label: "내 계정", icon: User },
 ] as const;
 
@@ -84,7 +86,7 @@ export default function SellerNav({ shopName }: Props) {
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur-lg">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/25">
             <Package2 className="h-5 w-5" />
@@ -96,7 +98,7 @@ export default function SellerNav({ shopName }: Props) {
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2">
-          <nav className="hidden items-center gap-1 sm:flex">
+          <nav className="hidden items-center gap-1 lg:flex">
             {NAV_LINKS.map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
@@ -114,7 +116,7 @@ export default function SellerNav({ shopName }: Props) {
           <button
             type="button"
             onClick={() => setMenuOpen((o) => !o)}
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 sm:hidden"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 lg:hidden"
             aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"}
             aria-expanded={menuOpen}
           >
@@ -140,11 +142,11 @@ export default function SellerNav({ shopName }: Props) {
         <>
           <button
             type="button"
-            className="fixed inset-0 z-30 bg-slate-900/20 sm:hidden"
+            className="fixed inset-0 z-30 bg-slate-900/20 lg:hidden"
             aria-label="메뉴 닫기"
             onClick={() => setMenuOpen(false)}
           />
-          <nav className="relative z-40 border-t border-slate-200 bg-white px-4 py-2 sm:hidden">
+          <nav className="relative z-40 border-t border-slate-200 bg-white px-4 py-2 lg:hidden">
             <div className="flex flex-col gap-0.5">
               {NAV_LINKS.map(({ href, label, icon: Icon }) => (
                 <Link

@@ -2,10 +2,12 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ADMIN_MEMBERS } from "@/lib/admin-team";
 import { Lock, Loader2 } from "lucide-react";
 
 function LoginForm() {
   const [pin, setPin] = useState("");
+  const [name, setName] = useState<string>(ADMIN_MEMBERS[0]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -20,14 +22,15 @@ function LoginForm() {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pin }),
+      body: JSON.stringify({ pin, name }),
     });
 
     if (res.ok) {
       router.push(from);
       router.refresh();
     } else {
-      setError("비밀번호가 틀렸습니다.");
+      const data = await res.json().catch(() => ({}));
+      setError(data.error || "비밀번호가 틀렸습니다.");
     }
     setLoading(false);
   };
@@ -40,11 +43,28 @@ function LoginForm() {
         </div>
         <h1 className="text-xl font-bold text-slate-900">셀틱 로그인</h1>
         <p className="mt-1 text-sm text-slate-500">
-          관리 페이지는 비밀번호가 필요합니다
+          관리 페이지는 닉네임과 비밀번호가 필요합니다
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            닉네임
+          </label>
+          <select
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-base outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+          >
+            {ADMIN_MEMBERS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
             비밀번호

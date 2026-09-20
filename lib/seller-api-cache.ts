@@ -5,6 +5,7 @@ export const SELLER_API = {
   orders: "/api/seller/orders",
   me: "/api/seller/me",
   settings: "/api/seller/settings",
+  questions: "/api/seller/questions",
 } as const;
 
 export const DEFAULT_STALE_MS = 60_000;
@@ -135,6 +136,9 @@ export function prefetchSellerTab(href: string): void {
       prefetchSellerApi(SELLER_API.orders);
       prefetchSellerApi(SELLER_API.products);
       prefetchSellerApi(SELLER_API.me);
+      break;
+    case "/seller/questions":
+      prefetchSellerApi(SELLER_API.questions);
       break;
     default:
       break;
