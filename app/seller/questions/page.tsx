@@ -13,6 +13,7 @@ import {
   MessageCircle,
   Pencil,
   Plus,
+  Search,
   Send,
   Trash2,
   X,
@@ -48,6 +49,7 @@ export default function SellerQuestionsPage() {
   const [loading, setLoading] = useState(
     () => !peekSellerApiData<QuestionsPayload>(SELLER_API.questions)
   );
+  const [search, setSearch] = useState("");
   const [composing, setComposing] = useState(false);
   const [form, setForm] = useState({ title: "", body: "" });
   const [creating, setCreating] = useState(false);
@@ -176,6 +178,12 @@ export default function SellerQuestionsPage() {
   const inputClass =
     "w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100";
 
+  const visibleItems = items.filter((item) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return item.title.toLowerCase().includes(q) || item.body.toLowerCase().includes(q);
+  });
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
       <div className="mb-4">
@@ -239,17 +247,37 @@ export default function SellerQuestionsPage() {
         </form>
       )}
 
+      <div className="relative mb-4">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input
+          className={`${inputClass} pl-9`}
+          placeholder="제목, 내용으로 검색"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {search && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100"
+            aria-label="검색어 지우기"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
       {loading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
         </div>
-      ) : items.length === 0 ? (
+      ) : visibleItems.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-12 text-center text-sm text-slate-400">
-          아직 등록한 문의가 없습니다.
+          {search ? "검색 결과가 없습니다." : "아직 등록한 문의가 없습니다."}
         </div>
       ) : (
         <ul className="space-y-3">
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             const expanded = expandedId === item.id;
             return (
               <li

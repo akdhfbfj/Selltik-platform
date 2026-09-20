@@ -17,6 +17,7 @@ import {
   MessagesSquare,
   Pencil,
   Plus,
+  Search,
   Send,
   Trash2,
   X,
@@ -65,6 +66,7 @@ export default function AdminBoardPage() {
   );
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [search, setSearch] = useState("");
 
   const [myName, setMyName] = useState(
     () => peekAdminApiData<MePayload>(ADMIN_API.me)?.name ?? ""
@@ -234,6 +236,18 @@ export default function AdminBoardPage() {
   const inputClass =
     "w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
+  const visibleItems = items.filter((item) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      item.title.toLowerCase().includes(q) ||
+      item.body.toLowerCase().includes(q) ||
+      item.authorName.toLowerCase().includes(q) ||
+      item.assignee.toLowerCase().includes(q) ||
+      item.shopName.toLowerCase().includes(q)
+    );
+  });
+
   const filterBtn = (active: boolean) =>
     `rounded-lg px-3 py-1.5 text-xs font-medium transition ${
       active
@@ -348,6 +362,26 @@ export default function AdminBoardPage() {
           </form>
         )}
 
+        <div className="relative mb-3">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            className={`${inputClass} pl-9`}
+            placeholder="제목, 내용, 작성자로 검색"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100"
+              aria-label="검색어 지우기"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-slate-500">종류</span>
           {(["all", "task", "inquiry"] as TypeFilter[]).map((t) => (
@@ -377,13 +411,13 @@ export default function AdminBoardPage() {
           <div className="flex justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
           </div>
-        ) : items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-12 text-center text-sm text-slate-400">
-            해당 조건의 항목이 없습니다.
+            {search ? "검색 결과가 없습니다." : "해당 조건의 항목이 없습니다."}
           </div>
         ) : (
           <ul className="space-y-3">
-            {items.map((item) => {
+            {visibleItems.map((item) => {
               const stale = item.status !== "done" && daysSince(item.createdAt) >= 3;
               const expanded = expandedId === item.id;
               return (
