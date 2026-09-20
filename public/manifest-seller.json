@@ -1,0 +1,14 @@
+{
+  "name": "셀틱 셀러",
+  "short_name": "셀틱",
+  "description": "셀틱 셀러 발주·안내 문자·공급가 관리",
+  "start_url": "/seller",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#006fc5",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

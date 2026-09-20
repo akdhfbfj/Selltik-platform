@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Noto_Sans_KR } from "next/font/google";
+import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import "./globals.css";
 
 const notoSans = Noto_Sans_KR({
@@ -43,7 +44,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ko">
-      <body className={`${notoSans.className} antialiased`}>{children}</body>
+      <body className={`${notoSans.className} antialiased`}>
+        <ServiceWorkerRegister />
+        {children}
+      </body>
     </html>
   );
 }

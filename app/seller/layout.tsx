@@ -7,6 +7,7 @@ import { getShopByAuthUserId } from "@/lib/shops";
 export const metadata: Metadata = {
   title: "셀틱 발주 관리",
   description: "셀틱 셀러 발주·안내 문자·공급가 관리",
+  manifest: "/manifest-seller.json",
   openGraph: {
     title: "셀틱 발주 관리",
     description: "셀틱 셀러 발주·안내 문자·공급가 관리",
