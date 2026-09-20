@@ -3,6 +3,7 @@
   "short_name": "셀틱",
   "description": "셀틱 셀러 발주·안내 문자·공급가 관리",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#006fc5",
