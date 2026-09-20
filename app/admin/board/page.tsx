@@ -15,8 +15,10 @@ import {
   Loader2,
   MessageCircle,
   MessagesSquare,
+  Pencil,
   Plus,
   Send,
+  Trash2,
   X,
 } from "lucide-react";
 
@@ -80,6 +82,11 @@ export default function AdminBoardPage() {
   const [repliesLoading, setRepliesLoading] = useState(false);
   const [replyBody, setReplyBody] = useState("");
   const [replying, setReplying] = useState(false);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ title: "", body: "", assignee: "" });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadMe = useCallback(async (force = false) => {
     const res = await fetchAdminApi<MePayload>(ADMIN_API.me, { force });
@@ -187,6 +194,41 @@ export default function AdminBoardPage() {
       await loadItems(true);
     }
     setReplying(false);
+  };
+
+  const startEdit = (item: WorkItem) => {
+    setEditingId(item.id);
+    setEditForm({ title: item.title, body: item.body, assignee: item.assignee });
+  };
+
+  const handleSaveEdit = async (id: string) => {
+    if (!editForm.title.trim() || !editForm.body.trim()) return;
+    setSavingEdit(true);
+    const res = await fetch(`/api/admin/work-items/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editForm),
+    });
+    if (res.ok) {
+      setEditingId(null);
+      await loadItems(true);
+    }
+    setSavingEdit(false);
+  };
+
+  const handleDelete = async (item: WorkItem) => {
+    if (!confirm(`「${item.title}」을(를) 삭제할까요? 답변도 함께 삭제됩니다.`)) {
+      return;
+    }
+    setDeletingId(item.id);
+    const res = await fetch(`/api/admin/work-items/${item.id}`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      if (expandedId === item.id) setExpandedId(null);
+      await loadItems(true);
+    }
+    setDeletingId(null);
   };
 
   const inputClass =
@@ -389,11 +431,58 @@ export default function AdminBoardPage() {
 
                   {expanded && (
                     <div className="border-t border-slate-100 bg-slate-50/60 p-4">
-                      <p className="mb-3 whitespace-pre-wrap text-sm text-slate-700">
-                        {item.body}
-                      </p>
+                      {editingId === item.id ? (
+                        <div className="mb-3 space-y-2">
+                          <input
+                            className={inputClass}
+                            value={editForm.title}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, title: e.target.value }))
+                            }
+                            placeholder="제목"
+                          />
+                          <textarea
+                            className={`${inputClass} min-h-[72px] resize-y`}
+                            value={editForm.body}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, body: e.target.value }))
+                            }
+                            placeholder="내용"
+                          />
+                          <input
+                            className={inputClass}
+                            value={editForm.assignee}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, assignee: e.target.value }))
+                            }
+                            placeholder="담당자 (선택)"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEdit(item.id)}
+                              disabled={savingEdit}
+                              className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                            >
+                              {savingEdit && <Loader2 className="h-3 w-3 animate-spin" />}
+                              저장
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingId(null)}
+                              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600"
+                            >
+                              취소
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mb-3 whitespace-pre-wrap text-sm text-slate-700">
+                          {item.body}
+                        </p>
+                      )}
 
-                      <div className="mb-3 flex flex-wrap gap-1.5">
+                      <div className="mb-3 flex flex-wrap items-center gap-1.5">
                         {(["open", "answered", "done"] as WorkItemStatus[]).map((s) => (
                           <button
                             key={s}
@@ -409,6 +498,30 @@ export default function AdminBoardPage() {
                             {STATUS_LABEL[s]}
                           </button>
                         ))}
+                        <span className="mx-0.5 h-4 w-px bg-slate-200" />
+                        {item.authorType === "admin" && item.authorName === myName && (
+                          <button
+                            type="button"
+                            onClick={() => startEdit(item)}
+                            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            수정
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(item)}
+                          disabled={deletingId === item.id}
+                          className="flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          {deletingId === item.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3 w-3" />
+                          )}
+                          삭제
+                        </button>
                       </div>
 
                       {repliesLoading ? (

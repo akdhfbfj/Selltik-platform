@@ -118,6 +118,31 @@ export async function createWorkItem(
   return (await getWorkItemById(id))!;
 }
 
+export async function updateWorkItem(
+  id: string,
+  input: { title?: string; body?: string; assignee?: string }
+): Promise<WorkItem | null> {
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (input.title !== undefined) update.title = input.title.trim();
+  if (input.body !== undefined) update.body = input.body.trim();
+  if (input.assignee !== undefined) update.assignee = input.assignee.trim();
+
+  const supabase = createServerClient();
+  const { error } = await supabase.from("work_items").update(update).eq("id", id);
+  if (error) throw error;
+  return getWorkItemById(id);
+}
+
+export async function deleteWorkItem(id: string): Promise<boolean> {
+  const supabase = createServerClient();
+  const { error, count } = await supabase
+    .from("work_items")
+    .delete({ count: "exact" })
+    .eq("id", id);
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
 export async function updateWorkItemStatus(
   id: string,
   status: WorkItemStatus
