@@ -63,3 +63,25 @@ export function toFeed(items: WorkItem[], now = Date.now()): FeedItem[] {
       resolvedAt: it.resolvedAt,
     }));
 }
+
+/** 토도 주소에서 온 요청에만 CORS 허용 */
+export function todoCorsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get("origin") ?? "";
+  if (!TODO_FEED_ORIGINS.includes(origin)) return {};
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, PATCH, OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
+  };
+}
+
+export function bearerToken(request: Request): string | undefined {
+  return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+}
+
+/** 토도에서 바꿀 수 있는 상태: 완료 / 되돌리기(대기) */
+export function isTodoStatus(status: unknown): status is "done" | "open" {
+  return status === "done" || status === "open";
+}

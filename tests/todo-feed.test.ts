@@ -42,3 +42,11 @@ test("미처리 전부 + 최근 14일 안에 처리된 것만 내보낸다", () 
   assert.deepEqual(feed.map((f) => f.id), ["a", "b", "d"]);
   assert.equal("authorType" in feed[0], false);
 });
+
+test("토도에서는 완료/대기만 바꿀 수 있다", async () => {
+  const { isTodoStatus } = await import("../lib/todo-feed");
+  assert.equal(isTodoStatus("done"), true);
+  assert.equal(isTodoStatus("open"), true);
+  assert.equal(isTodoStatus("answered"), false);
+  assert.equal(isTodoStatus(undefined), false);
+});

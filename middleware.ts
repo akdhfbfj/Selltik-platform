@@ -20,6 +20,7 @@ function isPublicApi(pathname: string, method: string): boolean {
   if (pathname === "/api/auth/login" && method === "POST") return true;
   // 토도 앱 연동: 토큰은 route에서 확인
   if (pathname === "/api/feed/work-items" && (method === "GET" || method === "OPTIONS")) return true;
+  if (/^\/api\/feed\/work-items\/[^/]+$/.test(pathname) && (method === "PATCH" || method === "OPTIONS")) return true;
   if (pathname === "/api/recommendations" && method === "POST") return true;
   if (/^\/api\/recommendations\/[^/]+\/images$/.test(pathname) && method === "POST") {
     return true;
