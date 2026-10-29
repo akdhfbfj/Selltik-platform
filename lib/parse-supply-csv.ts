@@ -18,6 +18,7 @@ function isMetaRow(name: string): boolean {
   if (!n) return true;
   if (n.includes("상 품 명") || n.includes("상품명")) return true;
   if (n.includes("본 가격표의 모든 단가")) return true;
+  if (n.startsWith("예시)") || n.startsWith("※")) return true;
   if (n === "설명" || n === "셀러") return true;
   return false;
 }

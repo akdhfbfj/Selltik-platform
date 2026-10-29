@@ -4,7 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import AdminNav from "@/components/AdminNav";
 import { formatKrw } from "@/lib/parse-supply-csv";
 import type { MasterProduct, MasterProductInput } from "@/lib/types";
-import { Loader2, Package, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import {
+  Download,
+  Loader2,
+  Package,
+  Pencil,
+  Plus,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 
 const emptyForm: MasterProductInput = {
   officialName: "",
@@ -220,26 +229,40 @@ export default function AdminProductsPage() {
         <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-3 font-semibold text-slate-900">CSV 일괄 업로드</h3>
           <p className="mb-4 text-sm text-slate-500">
+            「CSV 양식 다운로드」로 받은 파일에 상품명·설명·매입가·택배비·판매가를
+            채우세요. 계·이익액·이익률은 비워도 되고, 예시 행은 반영되지 않습니다.
             같은 상품명이 있으면 가격·정보를 <strong>갱신</strong>합니다. 공급가표
             전체를 새로 올릴 때는 아래 「전체 삭제」로 비운 뒤 CSV를 업로드하세요.
             변경 시 셀러에게 확인 요청이 가며, 셀러의 문자용 SKU는 바뀌지
             않습니다.
           </p>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700">
-            {uploading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4" />
-            )}
-            CSV 파일 선택
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              disabled={uploading}
-              onChange={handleUpload}
-            />
-          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = "/api/admin/products/template";
+              }}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <Download className="h-4 w-4" />
+              CSV 양식 다운로드
+            </button>
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700">
+              {uploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
+              CSV 파일 선택
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                disabled={uploading}
+                onChange={handleUpload}
+              />
+            </label>
+          </div>
         </div>
 
         {error && (
